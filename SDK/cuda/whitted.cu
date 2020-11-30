@@ -151,7 +151,6 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     const float3 U = whitted::params.U;
     const float3 V = whitted::params.V;
     const float3 W = whitted::params.W;
-    const int    subframe_index = whitted::params.subframe_index;
     const int    linear_index = whitted::params.sample_offset + launch_idx.y * launch_dims.x + launch_idx.x;
 
     //
@@ -284,7 +283,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     for( int i = 0; i < whitted::params.lights.count; ++i )
     {
-        Light light = whitted::params.lights[i];
+        Light light = whitted::params.lights.at<Light>(i);
         if( light.type == Light::Type::POINT )
         {
             // TODO: optimize

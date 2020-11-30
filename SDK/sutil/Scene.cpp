@@ -79,11 +79,12 @@ void context_log_cb( unsigned int level, const char* tag, const char* message, v
               << message << "\n";
 }
 
-template<typename T>
-BufferView<T> bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene, const int32_t accessor_idx )
+template <int COMPONENTS>
+BufferView bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene, 
+    std::map<CUdeviceptr, CUdeviceptr>& addr_map, const int32_t accessor_idx )
 {
     if( accessor_idx == -1 )
-        return BufferView<T>();
+        return BufferView();
 
     const auto& gltf_accessor    = model.accessors[ accessor_idx ];
     const auto& gltf_buffer_view = model.bufferViews[ gltf_accessor.bufferView ];
@@ -96,30 +97,24 @@ BufferView<T> bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene, co
     if( !elmt_byte_size )
         throw Exception( "gltf accessor component type not supported" );
 
-    const CUdeviceptr buffer_base = scene.getBuffer( gltf_buffer_view.buffer );
+    //const CUdeviceptr buffer_base = scene.getBuffer( gltf_buffer_view.buffer );
+    const CUdeviceptr buffer_base = reinterpret_cast<CUdeviceptr>(model.buffers[gltf_buffer_view.buffer].data.data());
 
-    BufferView<T> buffer_view;
+    BufferView buffer_view;
     buffer_view.data           = buffer_base + gltf_buffer_view.byteOffset + gltf_accessor.byteOffset;
-    //buffer_view.data           = 0;
     buffer_view.byte_stride    = static_cast<uint16_t>( gltf_buffer_view.byteStride );
     buffer_view.count          = static_cast<uint32_t>( gltf_accessor.count );
     buffer_view.elmt_byte_size = static_cast<uint16_t>( elmt_byte_size );
 
-    //size_t buf_size = buffer_view.count * (buffer_view.byte_stride ? buffer_view.byte_stride : sizeof(T));
-    //const unsigned char* buffer_base = model.buffers[gltf_buffer_view.buffer].data.data();
-    //CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&buffer_view.data), buf_size));
-    //CUDA_CHECK(cudaMemcpy(
-    //    reinterpret_cast<void*>(buffer_view.data),
-    //    buffer_base + buf_size,
-    //    buf_size,
-    //    cudaMemcpyHostToDevice
-    //));
+    addr_map[buffer_view.data] = buffer_view.data + buffer_view.count * 
+        (buffer_view.byte_stride ? buffer_view.byte_stride : COMPONENTS * elmt_byte_size);
 
     return buffer_view;
 }
 
 void processGLTFNode(
         Scene& scene,
+        std::map<CUdeviceptr, CUdeviceptr>& addr_map,
         const tinygltf::Model& model,
         const tinygltf::Node& gltf_node,
         const Matrix4x4& parent_matrix
@@ -204,14 +199,14 @@ void processGLTFNode(
 
 
             mesh->name = gltf_mesh.name;
-            mesh->indices.push_back( bufferViewFromGLTF<uint32_t>( model, scene, gltf_primitive.indices ) );
+            mesh->indices.push_back( bufferViewFromGLTF<1>( model, scene, addr_map, gltf_primitive.indices ) );
             mesh->material_idx.push_back( gltf_primitive.material );
             mesh->transform = node_xform;
             std::cerr << "\t\tNum triangles: " << mesh->indices.back().count / 3 << std::endl;
 
             assert( gltf_primitive.attributes.find( "POSITION" ) !=  gltf_primitive.attributes.end() );
             const int32_t pos_accessor_idx =  gltf_primitive.attributes.at( "POSITION" );
-            mesh->positions.push_back( bufferViewFromGLTF<float3>( model, scene, pos_accessor_idx ) );
+            mesh->positions.push_back( bufferViewFromGLTF<3>( model, scene, addr_map, pos_accessor_idx ) );
 
             const auto& pos_gltf_accessor = model.accessors[ pos_accessor_idx ];
             mesh->object_aabb = Aabb(
@@ -232,24 +227,24 @@ void processGLTFNode(
             if( normal_accessor_iter  !=  gltf_primitive.attributes.end() )
             {
                 std::cerr << "\t\tHas vertex normals: true\n";
-                mesh->normals.push_back( bufferViewFromGLTF<float3>( model, scene, normal_accessor_iter->second ) );
+                mesh->normals.push_back( bufferViewFromGLTF<3>( model, scene, addr_map, normal_accessor_iter->second ) );
             }
             else
             {
                 std::cerr << "\t\tHas vertex normals: false\n";
-                mesh->normals.push_back( bufferViewFromGLTF<float3>( model, scene, -1 ) );
+                mesh->normals.push_back( bufferViewFromGLTF<3>( model, scene, addr_map, -1 ) );
             }
 
             auto texcoord_accessor_iter = gltf_primitive.attributes.find( "TEXCOORD_0" ) ;
             if( texcoord_accessor_iter  !=  gltf_primitive.attributes.end() )
             {
                 std::cerr << "\t\tHas texcoords: true\n";
-                mesh->texcoords.push_back( bufferViewFromGLTF<float2>( model, scene, texcoord_accessor_iter->second ) );
+                mesh->texcoords.push_back( bufferViewFromGLTF<2>( model, scene, addr_map, texcoord_accessor_iter->second ) );
             }
             else
             {
                 std::cerr << "\t\tHas texcoords: false\n";
-                mesh->texcoords.push_back( bufferViewFromGLTF<float2>( model, scene, -1 ) );
+                mesh->texcoords.push_back( bufferViewFromGLTF<2>( model, scene, addr_map, -1 ) );
             }
         }
     }
@@ -257,9 +252,10 @@ void processGLTFNode(
     {
         for( int32_t child : gltf_node.children )
         {
-            processGLTFNode( scene, model, model.nodes[child], node_xform );
+            processGLTFNode( scene, addr_map, model, model.nodes[child], node_xform );
         }
     }
+
 }
 
 } // end anon namespace
@@ -293,7 +289,7 @@ void loadScene( const std::string& filename, Scene& scene )
             << "\tbyte size: " << buf_size << std::endl;
                   //<< "\turi      : " << gltf_buffer.uri << std::endl;
 
-        scene.addBuffer( buf_size,  gltf_buffer.data.data() );
+        //scene.addBuffer( buf_size,  gltf_buffer.data.data() );
     }
 
     //
@@ -438,6 +434,7 @@ void loadScene( const std::string& filename, Scene& scene )
     //
     // Process nodes
     //
+    std::map<CUdeviceptr, CUdeviceptr> addr_map;
     std::vector<int32_t> root_nodes( model.nodes.size(), 1 );
     for( auto& gltf_node : model.nodes )
         for( int32_t child : gltf_node.children )
@@ -449,8 +446,13 @@ void loadScene( const std::string& filename, Scene& scene )
             continue;
         auto& gltf_node = model.nodes[i];
 
-        processGLTFNode( scene, model, gltf_node, Matrix4x4::identity() );
+        processGLTFNode( scene, addr_map, model, gltf_node, Matrix4x4::identity() );
     }
+
+    //
+    // Unpack buffer with proper alignment
+    //
+    scene.remapBuffers(addr_map, model);
 }
 
 
@@ -684,17 +686,19 @@ void sutil::Scene::cleanup()
 
 sutil::Camera sutil::Scene::camera() const
 {
-    if( !m_cameras.empty() )
-    {
-        std::cerr << "Returning first camera" << std::endl;
-        return m_cameras.front();
-    }
+    //if( !m_cameras.empty() )
+    //{
+    //    std::cerr << "Returning first camera" << std::endl;
+    //    return m_cameras.front();
+    //}
 
     std::cerr << "Returning default camera" << std::endl;
     Camera cam;
     cam.setFovY( 45.0f );
-    cam.setLookat( m_scene_aabb.center() );
-    cam.setEye   ( m_scene_aabb.center() + make_float3( 0.0f, 0.0f, 1.5f*m_scene_aabb.maxExtent() ) );
+    //cam.setLookat( m_scene_aabb.center() );
+    //cam.setEye   ( m_scene_aabb.center() + make_float3( 0.0f, 0.0f, 1.5f*m_scene_aabb.maxExtent() ) );
+    cam.setEye(make_float3(-585.045f, 111.824f, -44.4497f));
+    cam.setDirection(make_float3(0.729207f, 0.261858f, 0.632208f));
     return cam;
 }
 
@@ -704,6 +708,56 @@ sutil::Camera sutil::Scene::camera() const
 //
 //
 //------------------------------------------------------------------------------
+
+void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model)
+{
+    // Compute total size
+    size_t total_size = 0;
+    size_t ts = 0;
+    for (auto& addr : addr_map) 
+    {
+        size_t cur_size = static_cast<size_t>(addr.second - addr.first);
+        size_t cur_size_align = roundUp(cur_size, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+        total_size += cur_size_align;
+        ts += cur_size;
+    }
+
+    // Allocate buffer
+    CUdeviceptr buffer = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&buffer), total_size));
+    m_buffers.push_back(buffer);
+
+    // Copy data
+    int tmp = total_size;
+    total_size = 0;
+    for (auto& addr : addr_map) 
+    {
+        size_t cur_size = static_cast<size_t>(addr.second - addr.first);
+        size_t cur_size_align = roundUp(cur_size, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+        addr.second = buffer + total_size;
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(addr.second),
+            reinterpret_cast<void*>(addr.first),
+            cur_size,
+            cudaMemcpyHostToDevice
+        ));
+        total_size += cur_size_align;
+    }
+
+    // Remap buffer views
+    for (size_t i = 0; i < m_meshes.size(); ++i)
+    {
+        auto& mesh = m_meshes[i];
+        const size_t num_subMeshes = mesh->indices.size();
+        for (size_t j = 0; j < num_subMeshes; ++j)
+        {
+            mesh->indices[j].data = addr_map[mesh->indices[j].data];
+            mesh->positions[j].data = addr_map[mesh->positions[j].data];
+            mesh->normals[j].data = addr_map[mesh->normals[j].data];
+            mesh->texcoords[j].data = addr_map[mesh->texcoords[j].data];
+        }
+    }
+}
 
 void Scene::createContext()
 {

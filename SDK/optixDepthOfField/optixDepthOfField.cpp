@@ -59,6 +59,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <random>
 
 #include <lib/mdas/kdtree.h>
 
@@ -79,8 +80,8 @@ int32_t           samples_per_launch = 16;
 
 whitted::LaunchParams*  d_params = nullptr;
 whitted::LaunchParams   params   = {};
-int32_t                 width    = 768;
-int32_t                 height   = 768;
+int32_t                 width    = 1920;
+int32_t                 height   = 1080;
 
 // MDAS
 mdas::KDTree* kdtree = nullptr;
@@ -157,9 +158,35 @@ static void keyCallback( GLFWwindow* window, int32_t key, int32_t /*scancode*/, 
             glfwSetWindowShouldClose( window, true );
         }
     }
-    else if( key == GLFW_KEY_G )
+    else if( key == GLFW_KEY_C )
     {
-        // toggle UI draw
+        std::cout << "Camera: " << std::endl;
+        std::cout << "\tEye " << camera.eye().x << " " << camera.eye().y << " " << camera.eye().z << std::endl;
+        std::cout << "\tDirection " << camera.direction().x << " " << camera.direction().y << " " << camera.direction().z << std::endl;
+    }
+    else if (key == GLFW_KEY_W)
+    {
+        camera.setFocalDistance(camera.focalDistance() + 0.5f);
+        camera_changed = true;
+        std::cout << "Focal distance " << camera.focalDistance() << std::endl;
+    }
+    else if (key == GLFW_KEY_S)
+    {
+        camera.setFocalDistance(camera.focalDistance() - 0.5f);
+        camera_changed = true;
+        std::cout << "Focal distance " << camera.focalDistance() << std::endl;
+    }
+    else if (key == GLFW_KEY_A)
+    {
+        camera.setLensRadius(camera.lensRadius() - 0.002f);
+        camera_changed = true;
+        std::cout << "Lens radius " << camera.lensRadius() << std::endl;
+    }
+    else if (key == GLFW_KEY_D)
+    {
+        camera.setLensRadius(camera.lensRadius() + 0.002f);
+        camera_changed = true;
+        std::cout << "Lens radius " << camera.lensRadius() << std::endl;
     }
 }
 
@@ -202,6 +229,7 @@ void initLaunchParams( const sutil::Scene& scene ) {
 
     const float loffset = scene.aabb().maxExtent();
 
+#if 0
     // TODO: add light support to sutil::Scene
     std::vector<Light> lights( 2 );
     lights[0].type            = Light::Type::POINT;
@@ -214,6 +242,30 @@ void initLaunchParams( const sutil::Scene& scene ) {
     lights[1].point.intensity = 3.0f;
     lights[1].point.position  = scene.aabb().center() + make_float3( -loffset, 0.5f * loffset, -0.5f * loffset );
     lights[1].point.falloff   = Light::Falloff::QUADRATIC;
+#else
+    const int numberOfLights = 64;
+    std::vector<Light> lights(numberOfLights);
+    std::random_device rd;
+    std::mt19937 mt(rd());
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    lights[0].type = Light::Type::AMBIENT;
+    lights[0].ambient.color = make_float3(0.35f, 0.35f, 0.35f);
+    for (int i = 1; i < numberOfLights; ++i) {
+        float u1 = dist(mt);
+        float u2 = dist(mt);
+        const float r = sqrtf(u1);
+        const float phi = 2.0f * M_PIf * u2;
+        float3 p;
+        p.x = r * cosf(phi);
+        p.y = r * sinf(phi);
+        p.z = sqrtf(fmaxf(0.0f, 1.0f - p.x * p.x - p.y * p.y));
+        lights[i].type = Light::Type::POINT;
+        lights[i].point.color = { 1.0f, 1.0f, 0.8f };
+        lights[i].point.intensity = 50.0f / numberOfLights;
+        lights[i].point.position = scene.aabb().center() + loffset * p;
+        lights[i].point.falloff = Light::Falloff::QUADRATIC;
+    }
+#endif
 
     params.lights.count  = static_cast<uint32_t>( lights.size() );
     CUDA_CHECK( cudaMalloc(
@@ -403,8 +455,10 @@ void displaySubframe(
 void initCameraState( const sutil::Scene& scene )
 {
     camera = scene.camera();
-    camera.setFocalDistance(1.0f);
-    camera.setLensRadius(0.005f);
+    //camera.setFocalDistance(1.0f);
+    //camera.setLensRadius(0.005f);
+    camera.setFocalDistance(20.0f);
+    camera.setLensRadius(0.3f);
     camera_changed = true;
 
     trackball.setCamera( &camera );

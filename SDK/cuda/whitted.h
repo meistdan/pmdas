@@ -82,7 +82,7 @@ struct LaunchParams
     int                      sample_offset;
     int                      sample_count;
 
-    BufferView<Light>        lights;
+    BufferView               lights;
     float3                   miss_color;
     OptixTraversableHandle   handle;
 };

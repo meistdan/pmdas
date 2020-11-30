@@ -43,7 +43,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
+#include <support/tinygltf/tiny_gltf.h>
 
 namespace sutil
 {
@@ -59,10 +61,10 @@ public:
         std::string                       name;
         Matrix4x4                         transform;
 
-        std::vector<GenericBufferView>    indices;
-        std::vector<BufferView<float3> >  positions;
-        std::vector<BufferView<float3> >  normals;
-        std::vector<BufferView<float2> >  texcoords;
+        std::vector<BufferView>  indices;
+        std::vector<BufferView>  positions;
+        std::vector<BufferView>  normals;
+        std::vector<BufferView>  texcoords;
 
         std::vector<int32_t>              material_idx;
 
@@ -107,6 +109,8 @@ public:
     SUTILAPI OptixDeviceContext                        context() const              { return m_context;    }
     SUTILAPI const std::vector<MaterialData::Pbr>&     materials() const            { return m_materials;  }
     SUTILAPI const std::vector<std::shared_ptr<MeshGroup>>& meshes() const          { return m_meshes;     }
+
+    SUTILAPI void remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model);
 
     SUTILAPI void createContext();
     SUTILAPI void buildMeshAccels( uint32_t triangle_input_flags = OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT );

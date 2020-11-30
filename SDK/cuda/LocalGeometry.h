@@ -77,18 +77,18 @@ SUTIL_HOSTDEVICE LocalGeometry getLocalGeometry( const GeometryData& geometry_da
                 tri                           = make_uint3( idx0, idx1, idx2 );
             }
 
-            const float3 P0 = mesh_data.positions[ tri.x ];
-            const float3 P1 = mesh_data.positions[ tri.y ];
-            const float3 P2 = mesh_data.positions[ tri.z ];
+            const float3 P0 = mesh_data.positions.at<float3>( tri.x );
+            const float3 P1 = mesh_data.positions.at<float3>( tri.y );
+            const float3 P2 = mesh_data.positions.at<float3>( tri.z );
             lgeom.P = ( 1.0f-barys.x-barys.y)*P0 + barys.x*P1 + barys.y*P2;
             lgeom.P = optixTransformPointFromObjectToWorldSpace( lgeom.P );
 
             float2 UV0, UV1, UV2;
             if( mesh_data.texcoords )
             {
-                UV0 = mesh_data.texcoords[ tri.x ];
-                UV1 = mesh_data.texcoords[ tri.y ];
-                UV2 = mesh_data.texcoords[ tri.z ];
+                UV0 = mesh_data.texcoords.at<float2>( tri.x );
+                UV1 = mesh_data.texcoords.at<float2>( tri.y );
+                UV2 = mesh_data.texcoords.at<float2>( tri.z );
                 lgeom.UV = ( 1.0f-barys.x-barys.y)*UV0 + barys.x*UV1 + barys.y*UV2;
             }
             else
@@ -105,9 +105,9 @@ SUTIL_HOSTDEVICE LocalGeometry getLocalGeometry( const GeometryData& geometry_da
             float3 N0, N1, N2;
             if( mesh_data.normals )
             {
-                N0 = mesh_data.normals[ tri.x ];
-                N1 = mesh_data.normals[ tri.y ];
-                N2 = mesh_data.normals[ tri.z ];
+                N0 = mesh_data.normals.at<float3>( tri.x );
+                N1 = mesh_data.normals.at<float3>( tri.y );
+                N2 = mesh_data.normals.at<float3>( tri.z );
                 lgeom.N = ( 1.0f-barys.x-barys.y)*N0 + barys.x*N1 + barys.y*N2;
                 lgeom.N = normalize( optixTransformNormalFromObjectToWorldSpace( lgeom.N ) );
             }

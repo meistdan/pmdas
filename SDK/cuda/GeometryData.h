@@ -44,10 +44,10 @@ struct GeometryData
 
     struct TriangleMesh
     {
-        GenericBufferView  indices;
-        BufferView<float3> positions;
-        BufferView<float3> normals;
-        BufferView<float2> texcoords;
+        BufferView  indices;
+        BufferView positions;
+        BufferView normals;
+        BufferView texcoords;
     };
 
 
@@ -60,9 +60,9 @@ struct GeometryData
 
     struct Curves
     {
-        BufferView<float2> strand_u;     // strand_u at segment start per segment
-        GenericBufferView  strand_i;     // strand index per segment
-        BufferView<uint2>  strand_info;  // info.x = segment base
+        BufferView strand_u;             // strand_u at segment start per segment
+        BufferView strand_i;             // strand index per segment
+        BufferView strand_info;          // info.x = segment base
                                          // info.y = strand length (segments)
     };
 
