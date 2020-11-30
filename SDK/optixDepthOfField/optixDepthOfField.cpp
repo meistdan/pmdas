@@ -279,6 +279,7 @@ void initLaunchParams( const sutil::Scene& scene ) {
                 cudaMemcpyHostToDevice
                 ) );
 
+    params.samples_per_launch = samples_per_launch;
     params.miss_color   = make_float3( 0.1f );
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
@@ -344,40 +345,44 @@ void handleCameraUpdate( whitted::LaunchParams& params )
 }
 
 
-void handleResize( sutil::CUDAOutputBuffer<uchar4>& output_buffer )
+void handleResize( sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes )
 {
     if( !resize_dirty )
         return;
     resize_dirty = false;
 
-    output_buffer.resize( width, height );
-
-    // Realloc accumulation buffer
-    CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.accum_buffer ) ) );
-    CUDA_CHECK( cudaMalloc(
-                reinterpret_cast<void**>( &params.accum_buffer ),
-                width*height*sizeof(float4)
-                ) );
+    output_buffer.resize(width, height);
+    output_buffer_bytes.resize( width, height );
 }
 
 
-void updateState( sutil::CUDAOutputBuffer<uchar4>& output_buffer, whitted::LaunchParams& params )
+void updateState(
+    sutil::CUDAOutputBuffer<float4>& output_buffer, 
+    sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes, 
+    whitted::LaunchParams& params 
+)
 {
     // Update params on device
     if( camera_changed || resize_dirty )
         params.subframe_index = 0;
 
     handleCameraUpdate( params );
-    handleResize( output_buffer );
+    handleResize( output_buffer, output_buffer_bytes );
 }
 
 
-void launchSubframe( sutil::CUDAOutputBuffer<uchar4>& output_buffer, const sutil::Scene& scene )
+void launchSubframe( 
+    sutil::CUDAOutputBuffer<float4>& output_buffer,
+    sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes,
+    const sutil::Scene& scene 
+)
 {
 
     // Launch
-    uchar4* result_buffer_data = output_buffer.map();
-    params.frame_buffer        = result_buffer_data;
+    float4* result_buffer_data = output_buffer.map();
+    uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
+    params.accum_buffer = result_buffer_data;
+    params.frame_buffer = result_buffer_data_bytes;
     CUDA_CHECK( cudaMemcpyAsync( reinterpret_cast<void*>( d_params ),
                 &params,
                 sizeof( whitted::LaunchParams ),
@@ -395,6 +400,7 @@ void launchSubframe( sutil::CUDAOutputBuffer<uchar4>& output_buffer, const sutil
                 height, // launch height
                 1       // launch depth
                 ) );
+    output_buffer_bytes.unmap();
     output_buffer.unmap();
     CUDA_SYNC_CHECK();
 }
@@ -470,7 +476,6 @@ void initCameraState( const sutil::Scene& scene )
 
 void cleanup()
 {
-    CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.accum_buffer    ) ) );
     CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.lights.data     ) ) );
     CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_params               ) ) );
     if (kdtree != nullptr) delete kdtree;
@@ -569,7 +574,8 @@ int main( int argc, char* argv[] )
             // Render loop
             //
             {
-                sutil::CUDAOutputBuffer<uchar4> output_buffer( output_buffer_type, width, height );
+                sutil::CUDAOutputBuffer<uchar4> output_buffer_bytes( output_buffer_type, width, height );
+                sutil::CUDAOutputBuffer<float4> output_buffer( output_buffer_type, width, height );
                 sutil::GLDisplay gl_display;
 
                 std::chrono::duration<double> state_update_time( 0.0 );
@@ -581,7 +587,7 @@ int main( int argc, char* argv[] )
                     auto t0 = std::chrono::steady_clock::now();
                     glfwPollEvents();
 
-                    updateState( output_buffer, params );
+                    updateState( output_buffer, output_buffer_bytes, params );
                     auto t1 = std::chrono::steady_clock::now();
                     state_update_time += t1 - t0;
                     t0 = t1;
@@ -589,13 +595,13 @@ int main( int argc, char* argv[] )
                     launchSubframeMdas( scene );
                     integrateMdas( output_buffer );
 #else
-                    launchSubframe( output_buffer, scene );
+                    launchSubframe( output_buffer, output_buffer_bytes, scene );
 #endif
                     t1 = std::chrono::steady_clock::now();
                     render_time += t1 - t0;
                     t0 = t1;
 
-                    displaySubframe( output_buffer, gl_display, window );
+                    displaySubframe( output_buffer_bytes, gl_display, window );
                     t1 = std::chrono::steady_clock::now();
                     display_time += t1 - t0;
 
@@ -613,22 +619,26 @@ int main( int argc, char* argv[] )
         }
         else
         {
-			if( output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP )
-			{
-				sutil::initGLFW(); // For GL context
-				sutil::initGL();
-			}
+            output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
 
-			sutil::CUDAOutputBuffer<uchar4> output_buffer(output_buffer_type, width, height);
+			sutil::CUDAOutputBuffer<uchar4> output_buffer_bytes(output_buffer_type, width, height);
+            sutil::CUDAOutputBuffer<float4> output_buffer(output_buffer_type, width, height);
 			handleCameraUpdate( params);
-			handleResize( output_buffer );
-			launchSubframe( output_buffer, scene );
+			handleResize( output_buffer, output_buffer_bytes );
+			launchSubframe( output_buffer, output_buffer_bytes, scene );
 
 			sutil::ImageBuffer buffer;
-			buffer.data = output_buffer.getHostPointer();
 			buffer.width = output_buffer.width();
 			buffer.height = output_buffer.height();
-			buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
+            buffer.data = output_buffer_bytes.getHostPointer();
+            buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
+
+            const std::string ext = outfile.substr(outfile.length() - 3);
+            if (ext == "PPM" || ext == "ppm")
+            {
+                buffer.data = output_buffer.getHostPointer();
+                buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
+            }
 
 			sutil::saveImage(outfile.c_str(), buffer, false);
 

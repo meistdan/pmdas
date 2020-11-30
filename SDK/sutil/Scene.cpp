@@ -728,7 +728,6 @@ void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf:
     m_buffers.push_back(buffer);
 
     // Copy data
-    int tmp = total_size;
     total_size = 0;
     for (auto& addr : addr_map) 
     {

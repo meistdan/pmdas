@@ -59,78 +59,87 @@ extern "C" __global__ void __raygen__pinhole()
     //
     unsigned int seed = tea<4>( launch_idx.y * launch_dims.x + launch_idx.x, subframe_index );
 
-    // The center of each pixel is at fraction (0.5,0.5)
-    const float2 subpixel_jitter =
-        subframe_index == 0 ? make_float2( 0.5f, 0.5f ) : make_float2( rnd( seed ), rnd( seed ) );
-
-    const float2 d =
-        2.0f
-            * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
-                           ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
-        - 1.0f;
-    float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
-    float3 ray_origin = make_float3(0.0f);
-
-    //
-    // Depth of field
-    // 
-    if (whitted::params.lens_radius > 0.0f)
+    float3 result = make_float3(0.0f);
+    int j = whitted::params.samples_per_launch;
+    do
     {
-        // Map uniform random numbers to $[-1,1]^2$
-        float2 rnd2 = make_float2(rnd(seed), rnd(seed));
-        float2 offset = 2.f * rnd2 - make_float2(1, 1);
 
-        // Handle degeneracy at the origin
-        float2 lens = make_float2(0.0f);
-        if (offset.x != 0 || offset.y != 0)
+        // The center of each pixel is at fraction (0.5,0.5)
+        const float2 subpixel_jitter =
+            subframe_index == 0 ? make_float2(0.5f, 0.5f) : make_float2(rnd(seed), rnd(seed));
+
+        const float2 d =
+            2.0f
+            * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
+                (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y))
+            - 1.0f;
+        float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
+        float3 ray_origin = make_float3(0.0f);
+
+        //
+        // Depth of field
+        // 
+        if (whitted::params.lens_radius > 0.0f)
         {
-            // Apply concentric mapping to point
-            float theta, r;
-            if (fabs(offset.x) > fabs(offset.y)) 
+            // Map uniform random numbers to $[-1,1]^2$
+            float2 rnd2 = make_float2(rnd(seed), rnd(seed));
+            float2 offset = 2.f * rnd2 - make_float2(1, 1);
+
+            // Handle degeneracy at the origin
+            float2 lens = make_float2(0.0f);
+            if (offset.x != 0 || offset.y != 0)
             {
-                r = offset.x;
-                theta = M_PI_4 * (offset.y / offset.x);
+                // Apply concentric mapping to point
+                float theta, r;
+                if (fabs(offset.x) > fabs(offset.y))
+                {
+                    r = offset.x;
+                    theta = M_PI_4 * (offset.y / offset.x);
+                }
+                else
+                {
+                    r = offset.y;
+                    theta = M_PI_2 - M_PI_4 * (offset.x / offset.y);
+                }
+                lens = whitted::params.lens_radius * r * make_float2(cosf(theta), sinf(theta));
             }
-            else 
-            {
-                r = offset.y;
-                theta = M_PI_2 - M_PI_4 * (offset.x / offset.y);
-            }
-            lens = whitted::params.lens_radius * r * make_float2(cosf(theta), sinf(theta));
+
+            // Compute point on plane of focus
+            float ft = whitted::params.focal_distance / ray_direction.z;
+            float3 focus = ft * ray_direction;
+
+            // Update ray for effect of lens
+            ray_origin = make_float3(lens.x, lens.y, 0);
+            ray_direction = normalize(focus - ray_origin);
         }
 
-        // Compute point on plane of focus
-        float ft = whitted::params.focal_distance / ray_direction.z;
-        float3 focus = ft * ray_direction;
+        // Transform
+        ray_origin += eye;
+        ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
-        // Update ray for effect of lens
-        ray_origin = make_float3(lens.x, lens.y, 0);
-        ray_direction = normalize(focus - ray_origin);
-    }
+        //
+        // Trace camera ray
+        //
+        whitted::PayloadRadiance payload;
+        payload.result = make_float3(0.0f);
+        payload.importance = 1.0f;
+        payload.depth = 0.0f;
 
-    // Transform
-    ray_origin += eye;
-    ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
+        traceRadiance(whitted::params.handle, ray_origin, ray_direction,
+            0.01f,  // tmin       // TODO: smarter offset
+            1e16f,  // tmax
+            &payload);
 
-    //
-    // Trace camera ray
-    //
-    whitted::PayloadRadiance payload;
-    payload.result     = make_float3( 0.0f );
-    payload.importance = 1.0f;
-    payload.depth      = 0.0f;
+        // Add result
+        result += payload.result;
 
-    traceRadiance( whitted::params.handle, ray_origin, ray_direction,
-                   0.01f,  // tmin       // TODO: smarter offset
-                   1e16f,  // tmax
-                   &payload );
+    } while ( --j );
 
     //
     // Update results
-    // TODO: timview mode
     //
     const unsigned int image_index = launch_idx.y * launch_dims.x + launch_idx.x;
-    float3             accum_color = payload.result;
+    float3             accum_color = result / static_cast<float>(whitted::params.samples_per_launch);
 
     if( subframe_index > 0)
     {

@@ -64,6 +64,7 @@ struct LaunchParams
     unsigned int             width;
     unsigned int             height;
     unsigned int             subframe_index;
+    unsigned int             samples_per_launch;
     float4*                  accum_buffer;
     uchar4*                  frame_buffer;
     int                      max_depth;
