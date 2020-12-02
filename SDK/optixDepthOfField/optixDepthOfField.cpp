@@ -248,8 +248,7 @@ void initLaunchParams(const sutil::Scene& scene) {
     lights[1].point.falloff = Light::Falloff::QUADRATIC;
 #else
     std::vector<Light> lights(number_of_lights);
-    std::random_device rd;
-    std::mt19937 mt(rd());
+    std::mt19937 mt;
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     lights[0].type = Light::Type::AMBIENT;
     lights[0].ambient.color = make_float3(0.35f, 0.35f, 0.35f);
@@ -461,8 +460,8 @@ void initCameraState(const sutil::Scene& scene)
     camera = scene.camera();
     //camera.setFocalDistance(1.0f);
     //camera.setLensRadius(0.005f);
-    camera.setFocalDistance(20.0f);
-    camera.setLensRadius(0.3f);
+    //camera.setFocalDistance(20.0f);
+    //camera.setLensRadius(0.3f);
     camera_changed = true;
 
     trackball.setCamera(&camera);

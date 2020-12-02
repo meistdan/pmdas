@@ -882,8 +882,8 @@ __global__ void integrateKernel(
 
 }
 
-KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(4), bitsPerDim(1), extraImgBits(3), numberOfSamples(0), 
-numberOfNodes(0), maxSamples(maxSamples), scaleX(48.0f), scaleY(24.0f), errorThreshold(0.1f) {
+KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(4), bitsPerDim(1), extraImgBits(5), numberOfSamples(0), 
+numberOfNodes(0), maxSamples(maxSamples), scaleX(192.0f), scaleY(108.0f), errorThreshold(0.1f) {
     randomStates.Resize(maxSamples);
     sampleCoordinates.Resize(maxSamples);
     sampleValues.Resize(maxSamples);
@@ -1321,7 +1321,7 @@ bool KDTree::Validate(void) {
 
     float rootVolume = scaleX * scaleY;
     if (abs(totalVolume - rootVolume) > 1.0e-1) {
-        std::cout << "Total volume bounded by leaves is not equal to the volume of bounded by the root !" <<
+        std::cout << "Total volume bounded by leaves is not equal to the volume of bounded by the root " <<
             totalVolume << " != " << rootVolume << std::endl;
         return false;
     }
