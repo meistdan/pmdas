@@ -54,7 +54,7 @@ namespace sutil
 class Scene
 {
 public:
-    SUTILAPI Scene();
+    SUTILAPI Scene(bool mdas = false);
     SUTILAPI ~Scene();
     struct MeshGroup
     {
@@ -145,6 +145,8 @@ private:
     OptixProgramGroup                    m_occlusion_hit_group      = 0;
     OptixTraversableHandle               m_ias_handle               = 0;
     CUdeviceptr                          m_d_ias_output_buffer      = 0;
+
+    bool m_mdas = false;
 };
 
 

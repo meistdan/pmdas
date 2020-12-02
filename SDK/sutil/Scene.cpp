@@ -456,7 +456,7 @@ void loadScene( const std::string& filename, Scene& scene )
 }
 
 
-Scene::Scene( void ) {}
+Scene::Scene( bool mdas ) : m_mdas(mdas) {}
 
 
 Scene::~Scene( void )
@@ -1261,11 +1261,10 @@ void Scene::createProgramGroups()
         OptixProgramGroupDesc raygen_prog_group_desc = {};
         raygen_prog_group_desc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
         raygen_prog_group_desc.raygen.module            = m_ptx_module;
-#if MDAS
-        raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
-#else
-        raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";
-#endif
+        if (m_mdas)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
+        else
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";
 
         OPTIX_CHECK_LOG( optixProgramGroupCreate(
                     m_context,

@@ -36,8 +36,6 @@
 
 #include <lib/mdas/point.h>
 
-#define MDAS 0
-
 namespace whitted
 {
 

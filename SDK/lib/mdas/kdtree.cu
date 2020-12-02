@@ -248,6 +248,8 @@ __global__ void updateIndicesKernel(
 
         // Only interiors
         if (!node.Leaf()) {
+            node.left = node.left < 0 ? ~node.left : node.left;
+            node.right = node.right < 0 ? ~node.right : node.right;
             if (nodes[node.left].Leaf()) node.left = ~node.left;
             if (nodes[node.right].Leaf()) node.right = ~node.right;
         }
@@ -393,20 +395,20 @@ __global__ void adaptiveSamplingKernel(
                     do {
                         direction = 2.0f * r - 1.0f;
                     } while (Point::Norm(direction) > 1.0f);
-                    const float R = 0.55;
+                    const float R = 0.55f;
                     float radius = R * Point::Distance(box.mx, box.mn);
-                    Point x = center + radius * direction;
+                    candidate = center + radius * direction;
 
                     // Check extent
                     bool valid = true;
                     for (int i = 2; i < Point::DIM; ++i) {
-                        if (x[i] < 0.0f || x[i] >= 1.0f) {
+                        if (candidate[i] < 0.0f || candidate[i] >= 1.0f) {
                             valid = false;
                             break;
                         }
                     }
-                    if (x[0] < 0.0f || x[0] >= scaleX) valid = false;
-                    if (x[1] < 0.0f || x[1] >= scaleY) valid = false;
+                    if (candidate[0] < 0.0f || candidate[0] >= scaleX) valid = false;
+                    if (candidate[1] < 0.0f || candidate[1] >= scaleY) valid = false;
                     if (valid) break;
 
                 }
@@ -416,9 +418,9 @@ __global__ void adaptiveSamplingKernel(
                 KDTree::Node curNode = nodes[curNodeIndex];
                 while (!curNode.Leaf()) {
                     if (candidate[~curNode.dimension] < curNode.position)
-                        curNodeIndex = curNode.left;
+                        curNodeIndex = curNode.left < 0 ? ~curNode.left : curNode.left;
                     else
-                        curNodeIndex = curNode.right;
+                        curNodeIndex = curNode.right < 0 ? ~curNode.right : curNode.right;
                     curNode = nodes[curNodeIndex];
                 }
 
@@ -769,8 +771,6 @@ __global__ void integrateKernel(
                 // Fetch AABBs of the two child nodes
                 float4 tmp = tex1Dfetch(t_nodes, nodeAddr); // child_index0, child_index1
                 const KDTree::Node  node = *(KDTree::Node*)&tmp;
-                //const float4 n0xy = tex1Dfetch(t_nodesxy, node.left < 0 ? ~node.left : node.left); // (c0.lo.x, c0.hi.x, c0.lo.y, c0.hi.y)
-                //const float4 n1xy = tex1Dfetch(t_nodeszw, node.right < 0 ? ~node.right : node.right); // (c1.lo.x, c1.hi.x, c1.lo.y, c1.hi.y)
 
                 // Intersect the pixel volume with the child nodes
                 bool traverseChild0x = ~node.dimension == 0 ? pMinX < node.position : true;
@@ -882,8 +882,8 @@ __global__ void integrateKernel(
 
 }
 
-KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(4), bitsPerDim(2), extraImgBits(6), numberOfSamples(0), 
-numberOfNodes(0), maxSamples(maxSamples), swapBuffers(false), scaleX(1.0f), scaleY(1.0f), errorThreshold(0.5f) {
+KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(4), bitsPerDim(1), extraImgBits(3), numberOfSamples(0), 
+numberOfNodes(0), maxSamples(maxSamples), scaleX(48.0f), scaleY(24.0f), errorThreshold(0.1f) {
     randomStates.Resize(maxSamples);
     sampleCoordinates.Resize(maxSamples);
     sampleValues.Resize(maxSamples);
@@ -896,6 +896,9 @@ numberOfNodes(0), maxSamples(maxSamples), swapBuffers(false), scaleX(1.0f), scal
     leafIndices[0].Resize(maxSamples);
     leafIndices[1].Resize(maxSamples);
     errors.Resize(maxSamples);
+    int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
+    int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
+    std::cout << "Initial samples " << numberOfInitialSamples << std::endl;
 }
 
 float KDTree::InitialSampling() {
@@ -903,7 +906,6 @@ float KDTree::InitialSampling() {
     // Number of samples
     int numberOfLeaves = (1 << (bitsPerDim  * Point::DIM)) << (extraImgBits << 1);
     numberOfSamples = numberOfLeaves * maxLeafSize;
-    std::cout << "Initial samples " << numberOfSamples << std::endl;
 
     // Elapsed time
     float time;
@@ -1041,7 +1043,7 @@ float KDTree::AdaptiveSampling(void) {
     float time;
 
     // Reset locks
-    cudaMemset(nodeLocks.Data(), 0, sizeof(unsigned long long) * GetNumberOfLeaves());
+    cudaMemset(nodeLocks.Data(), 0, sizeof(unsigned long long) * GetNumberOfNodes());
 
     // Grid and block size
     int minGridSize, blockSize;
@@ -1131,7 +1133,6 @@ float KDTree::Split(void) {
     cudaEventDestroy(stop);
 
     // Number of samples
-    int newSamples;
     cudaMemcpyFromSymbol(&newSamples, g_warpCounter0, sizeof(int), 0);
     numberOfSamples += newSamples;
 
@@ -1196,6 +1197,7 @@ float KDTree::Build() {
     float time = 0.0f;
     time += InitialSampling();
     time += Construct();
+    swapBuffers = false;
     return time;
 }
 
