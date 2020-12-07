@@ -1,5 +1,6 @@
 #include <sutil/vec_math.h>
 #include <cuda/helpers.h>
+#include <cuda/random.h>
 
 #include <stack>
 #include <vector>
@@ -55,7 +56,7 @@ __global__ void uniformSamplingKernel(
     KDTree::Node* nodes,
     float4* nodesxy,
     float4* nodeszw,
-    curandState* randStates
+    unsigned int* seeds
 ) {
 
     // Leaf index
@@ -90,15 +91,13 @@ __global__ void uniformSamplingKernel(
 
         // Uniform sampling
         KDTree::Node node;
-        curandState randState;
-        curand_init((1337 << 20) + leafIndex, 0, 0, &randState);
+        unsigned int seed = tea<4>(leafIndex, 0);
         for (int j = 0; j < samplesPerLeaf; ++j) {
 
             // Random point
             Point r;
             for (int i = 0; i < Point::DIM; ++i) {
-                r.data[i] = curand_uniform(&randState);
-                if (r[i] == 1.0f) r[i] = 0.0f;
+                r.data[i] = rnd(seed);
             }
 
             // Sample index
@@ -111,7 +110,7 @@ __global__ void uniformSamplingKernel(
             node.indices[j] = sampleIndex;
 
         }
-        randStates[leafIndex] = randState;
+        seeds[leafIndex] = seed;
         
         // Node index
         int nodeIndex = leafIndex + numberOfLeaves - 1;
@@ -342,7 +341,7 @@ __global__ void adaptiveSamplingKernel(
     float4* nodeszw,
     Point* leafSamples,
     Point* sampleCoordinates,
-    curandState* randStates
+    unsigned int* seeds
 ) {
 
     // Leaf index.
@@ -376,23 +375,21 @@ __global__ void adaptiveSamplingKernel(
             float maxDistance = -1.0;
             Point maxCandidate;
             Point center = box.Center();
-            curandState randState = randStates[leafIndex];
+            unsigned int seed = seeds[leafIndex];
+            if (seed == 0) seed = tea<4>(leafIndex, 0);
             for (int j = 0; j < candidatesNum; ++j) {
 
                 // Generate candidate
                 Point candidate;
-                while (true) {
 
-                    // Random point
-                    Point r;
-                    for (int i = 0; i < Point::DIM; ++i) {
-                        r.data[i] = curand_uniform(&randState);
-                        if (r[i] == 1.0f) r[i] = 0.0f;
-                    }
+                while (true) {
 
                     // Sample point bounding sphere
                     Point direction;
                     do {
+                        Point r;
+                        for (int i = 0; i < Point::DIM; ++i) 
+                            r.data[i] = rnd(seed);
                         direction = 2.0f * r - 1.0f;
                     } while (Point::Norm(direction) > 1.0f);
                     const float R = 0.55f;
@@ -443,7 +440,7 @@ __global__ void adaptiveSamplingKernel(
                 }
 
             }
-            randStates[leafIndex] = randState;
+            seeds[leafIndex] = seed;
 
             // Sample coordinates and node index
             leafSamples[leafIndex] = maxCandidate;
@@ -882,9 +879,9 @@ __global__ void integrateKernel(
 
 }
 
-KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(4), bitsPerDim(1), extraImgBits(5), numberOfSamples(0), 
-numberOfNodes(0), maxSamples(maxSamples), scaleX(192.0f), scaleY(108.0f), errorThreshold(0.1f) {
-    randomStates.Resize(maxSamples);
+KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(1), bitsPerDim(0), extraImgBits(7), numberOfSamples(0), 
+numberOfNodes(0), maxSamples(maxSamples), scaleX(1024.0f), scaleY(512.0f), errorThreshold(0.1f) {
+    seeds.Resize(maxSamples);
     sampleCoordinates.Resize(maxSamples);
     sampleValues.Resize(maxSamples);
     nodes.Resize(2 * maxSamples - 1);
@@ -902,6 +899,9 @@ numberOfNodes(0), maxSamples(maxSamples), scaleX(192.0f), scaleY(108.0f), errorT
 }
 
 float KDTree::InitialSampling() {
+
+    // Reset seeds
+    cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
 
     // Number of samples
     int numberOfLeaves = (1 << (bitsPerDim  * Point::DIM)) << (extraImgBits << 1);
@@ -924,7 +924,7 @@ float KDTree::InitialSampling() {
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
-        leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), randomStates.Data());
+        leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
 
     // Elapsed time and cleanup
     cudaEventRecord(stop, 0);
@@ -1074,7 +1074,7 @@ float KDTree::AdaptiveSampling(void) {
         nodeszw.Data(), 
         leafSamples.Data(),
         sampleCoordinates.Data(),
-        randomStates.Data()
+        seeds.Data()
     );
 
     // Elapsed time and cleanup
@@ -1267,6 +1267,9 @@ bool KDTree::Validate(void) {
     std::vector<int> sampleHist(numberOfSamples);
     memset(sampleHist.data(), 0, sizeof(int) * numberOfSamples);
 
+    // Validation flag
+    bool valid = true;
+
     // Find leaves and validate them
     while (!stack.empty()) {
 
@@ -1293,8 +1296,14 @@ bool KDTree::Validate(void) {
             for (int i = 0; i < 4; ++i) {
                 if (nodes[nodeIndex].indices[i] >= 0) {
                     int sampleIndex = nodes[nodeIndex].indices[i];
-                    if (!box.Contains(sampleCoordinates[sampleIndex]))
+                    if (!box.Contains(sampleCoordinates[sampleIndex])) {
+                        valid = false;
                         std::cout << "Sample is outside the leaf!" << std::endl;
+                        std::cout << "Box min " << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
+                        std::cout << "Sample  " << sampleCoordinates[sampleIndex][0] << " " << sampleCoordinates[sampleIndex][1] << " " 
+                            << sampleCoordinates[sampleIndex][2] << " " << sampleCoordinates[sampleIndex][3] << std::endl;
+                        std::cout << "Box max " << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
+                    }
                     avgValue += sampleValues[sampleIndex];
                     ++sampleHist[sampleIndex];
                     ++sampleCount;
@@ -1320,20 +1329,56 @@ bool KDTree::Validate(void) {
     }
 
     float rootVolume = scaleX * scaleY;
-    if (abs(totalVolume - rootVolume) > 1.0e-1) {
+    if (abs(totalVolume - rootVolume) > 1.0e-2 * rootVolume) {
         std::cout << "Total volume bounded by leaves is not equal to the volume of bounded by the root " <<
             totalVolume << " != " << rootVolume << std::endl;
-        return false;
+        valid = false;
     }
     if (totalSampleCount != numberOfSamples) {
-        std::cout << "Number of samples is different than number of indices in leaves! " <<
+        std::cout << "Number of samples is different than number of indices in leaves " <<
             numberOfSamples << " != " << totalSampleCount << std::endl;
-        return false;
+        valid = false;
     }
     for (int i = 0; i < numberOfSamples; ++i) {
         if (sampleHist[i] != 1) {
-            std::cout << "Sample not referenced or referenced more than once!" << std::endl;
-            return false;
+            valid = false;
+            std::cout << "Sample not referenced or referenced more than once "  << i << " " << sampleHist[i] << ": ";
+            std::cout << sampleCoordinates[i][0] << " " << sampleCoordinates[i][1] 
+               << " " << sampleCoordinates[i][2] << " " << sampleCoordinates[i][3] << std::endl;
+            for (int k = 0; k < GetNumberOfLeaves(); ++k) {
+                for (int j = 0; j < 4; ++j) {
+                    int nodeIndex = leafIndices[swapBuffers][k];
+                    KDTree::Node curNode = nodes[nodeIndex];
+                    if (curNode.indices[j] == i) {
+                        AABB box;
+                        box.mn.data[0] = nodesxy[nodeIndex].x;
+                        box.mn.data[1] = nodesxy[nodeIndex].z;
+                        box.mn.data[2] = nodeszw[nodeIndex].x;
+                        box.mn.data[3] = nodeszw[nodeIndex].z;
+                        box.mx.data[0] = nodesxy[nodeIndex].y;
+                        box.mx.data[1] = nodesxy[nodeIndex].w;
+                        box.mx.data[2] = nodeszw[nodeIndex].y;
+                        box.mx.data[3] = nodeszw[nodeIndex].w;
+                        std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
+                        std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
+                        std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
+                    }
+                }
+            }
+            //Point candidate = sampleCoordinates[i];
+            //int curNodeIndex = 0;
+            //KDTree::Node curNode = nodes[curNodeIndex];
+            //while (!curNode.Leaf()) {
+            //    if (candidate[~curNode.dimension] < curNode.position)
+            //        curNodeIndex = curNode.left < 0 ? ~curNode.left : curNode.left;
+            //    else
+            //        curNodeIndex = curNode.right < 0 ? ~curNode.right : curNode.right;
+            //    curNode = nodes[curNodeIndex];
+            //}
+            //std::cout << "indices:\n";
+            //for (int j = 0; j < 4; ++j)
+            //    std::cout << curNode.indices[i] << " ";
+            //std::cout << "done" << std::endl;
         }
     }
 
@@ -1341,27 +1386,60 @@ bool KDTree::Validate(void) {
     for (int i = 0; i < numberOfSamples; ++i) {
 
         // Find leaf
-        int curNodeIndex = 0;
-        KDTree::Node curNode = nodes[curNodeIndex];
+        stack.push(0);
         Point sample = sampleCoordinates[i];
-        while (!curNode.Leaf()) {
-            if (sample[~curNode.dimension] < curNode.position)
-                curNodeIndex = curNode.left < 0 ? ~curNode.left : curNode.left;
-            else
-                curNodeIndex = curNode.right < 0 ? ~curNode.right : curNode.right;
-            curNode = nodes[curNodeIndex];
+        bool contains = false;
+        while (!stack.empty()) {
+            int curNodeIndex = stack.top();
+            KDTree::Node curNode = nodes[curNodeIndex];
+            stack.pop();
+            if (curNode.Leaf()) {
+                for (int j = 0; j < 4; ++j) {
+                    if (curNode.indices[j] == i)
+                        contains = true;
+                }
+            }
+            else {
+                if (sample[~curNode.dimension] <= curNode.position)
+                    stack.push(curNode.left < 0 ? ~curNode.left : curNode.left);
+                if (sample[~curNode.dimension] >= curNode.position)
+                    stack.push(curNode.right < 0 ? ~curNode.right : curNode.right);
+            }
         }
 
-        // Check whether the leaf contains sample index
-        bool valid = false;
-        for (int j = 0; j < 4; ++j) {
-            if (curNode.indices[j] == i)
-                valid = true;
+        if (!contains) {
+            valid = false;
+            std::cout << "Sample is not in any leaf " << i << ": ";
+            std::cout << sampleCoordinates[i][0] << " " << sampleCoordinates[i][1] << 
+                  " " << sampleCoordinates[i][2] << " " << sampleCoordinates[i][3] << std::endl;
+            std::cout << "Histogram " << sampleHist[i] << std::endl;
+            for (int k = 0; k < GetNumberOfLeaves(); ++k) {
+                for (int j = 0; j < 4; ++j) {
+                    int nodeIndex = leafIndices[swapBuffers][k];
+                    KDTree::Node curNode = nodes[nodeIndex];
+                    if (curNode.indices[j] == i) {
+                        contains = true;
+                        AABB box;
+                        box.mn.data[0] = nodesxy[nodeIndex].x;
+                        box.mn.data[1] = nodesxy[nodeIndex].z;
+                        box.mn.data[2] = nodeszw[nodeIndex].x;
+                        box.mn.data[3] = nodeszw[nodeIndex].z;
+                        box.mx.data[0] = nodesxy[nodeIndex].y;
+                        box.mx.data[1] = nodesxy[nodeIndex].w;
+                        box.mx.data[2] = nodeszw[nodeIndex].y;
+                        box.mx.data[3] = nodeszw[nodeIndex].w;
+                        std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
+                        std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
+                        std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
+                    }
+                }
+            }
         }
-        if (!valid) return false;
     }
 
-    return true;
+    if (!valid) exit(1);
+
+    return valid;
 }
 
 }  // namespace mdas

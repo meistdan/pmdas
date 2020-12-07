@@ -1,8 +1,6 @@
 #ifndef _KDTREE_H_
 #define _KDTREE_H_
 
-#include <curand.h>
-#include <curand_kernel.h>
 #include "buffer.h"
 #include "point.h"
 
@@ -80,7 +78,7 @@ private:
     float scaleY;
     float errorThreshold;
 
-    Buffer<curandState> randomStates;
+    Buffer<unsigned int> seeds;
     Buffer<Point> sampleCoordinates;
     Buffer<float3> sampleValues;
 
