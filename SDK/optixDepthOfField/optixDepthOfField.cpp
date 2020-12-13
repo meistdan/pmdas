@@ -291,10 +291,10 @@ void initLaunchParams(const sutil::Scene& scene) {
 }
 
 
-void initMdas()
+void initMdas(const std::string& outfile)
 {
-    const size_t maxSamples = 10000000;
-    kdtree = new mdas::KDTree(maxSamples);
+    const size_t max_samples = 10000000;
+    kdtree = new mdas::KDTree(max_samples, outfile);
     kdtree->Build();
 
     params.scale = make_float2(kdtree->GetScaleX(), kdtree->GetScaleY());
@@ -418,7 +418,7 @@ void launchSubframe(
 void samplingPassMdas()
 {
     kdtree->SamplingPass();
-    kdtree->Validate();
+    //kdtree->Validate();
     params.sample_count = kdtree->GetNewSamples();
     params.sample_offset = kdtree->GetNumberOfSamples() - kdtree->GetNewSamples();
 }
@@ -433,6 +433,12 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
     kdtree->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();
     output_buffer_bytes.unmap();
+}
+
+
+void samplingDensityMdas(sutil::ImageBuffer& density_buffer)
+{
+    kdtree->SamplingDensity(reinterpret_cast<float4*>(density_buffer.data), width, height);
 }
 
 
@@ -460,8 +466,8 @@ void initCameraState(const sutil::Scene& scene)
     camera = scene.camera();
     //camera.setFocalDistance(1.0f);
     //camera.setLensRadius(0.005f);
-    //camera.setFocalDistance(20.0f);
-    //camera.setLensRadius(0.3f);
+    camera.setFocalDistance(20.0f);
+    camera.setLensRadius(0.3f);
     camera_changed = true;
 
     trackball.setCamera(&camera);
@@ -565,11 +571,11 @@ int main(int argc, char* argv[])
         initCameraState(scene);
         initLaunchParams(scene);
         if (mdas_iterations >= 0)
-            initMdas();
+            initMdas(outfile);
 
         if (outfile.empty())
         {
-            GLFWwindow* window = sutil::initUI("optixMeshViewer", width, height);
+            GLFWwindow* window = sutil::initUI("optixDepthOfField", width, height);
             glfwSetMouseButtonCallback(window, mouseButtonCallback);
             glfwSetCursorPosCallback(window, cursorPosCallback);
             glfwSetWindowSizeCallback(window, windowSizeCallback);
@@ -602,7 +608,9 @@ int main(int argc, char* argv[])
                     {
                         if (params.subframe_index == 0)
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
-                        if (params.subframe_index >= 1 && params.subframe_index <= mdas_iterations)
+                        //if (params.subframe_index >= 1 && params.subframe_index <= mdas_iterations)
+                        if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples() 
+                            + kdtree->GetNumberOfLeaves() <= kdtree->GetMaxSamples())
                         {
                             samplingPassMdas();
                             std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
@@ -667,8 +675,20 @@ int main(int argc, char* argv[])
                 buffer.data = output_buffer.getHostPointer();
                 buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
             }
-
             sutil::saveImage(outfile.c_str(), buffer, false);
+
+            if (mdas_iterations >= 0)
+            {
+                sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
+                std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.ppm";
+                sutil::ImageBuffer density_buffer;
+                density_buffer.width = output_density_buffer.width();
+                density_buffer.height = output_density_buffer.height();
+                density_buffer.data = output_density_buffer.getHostPointer();
+                density_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
+                samplingDensityMdas(density_buffer);
+                sutil::saveImage(density_outfile.c_str(), density_buffer, false);
+            }
 
             if (output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP)
             {

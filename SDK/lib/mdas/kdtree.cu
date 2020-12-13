@@ -879,8 +879,18 @@ __global__ void integrateKernel(
 
 }
 
-KDTree::KDTree(int maxSamples) : maxLeafSize(4), candidatesNum(1), bitsPerDim(0), extraImgBits(7), numberOfSamples(0), 
-numberOfNodes(0), maxSamples(maxSamples), scaleX(1024.0f), scaleY(512.0f), errorThreshold(0.1f) {
+KDTree::KDTree(int maxSamples, const std::string& logFilename) : 
+    maxLeafSize(4), 
+    candidatesNum(1), 
+    bitsPerDim(0), 
+    extraImgBits(7), 
+    numberOfSamples(0), 
+    numberOfNodes(0), 
+    maxSamples(maxSamples), 
+    scaleX(1024.0f), 
+    scaleY(512.0f), 
+    errorThreshold(0.1f)
+{
     seeds.Resize(maxSamples);
     sampleCoordinates.Resize(maxSamples);
     sampleValues.Resize(maxSamples);
@@ -896,9 +906,18 @@ numberOfNodes(0), maxSamples(maxSamples), scaleX(1024.0f), scaleY(512.0f), error
     int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
     int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
     std::cout << "Initial samples " << numberOfInitialSamples << std::endl;
+    if (!logFilename.empty()) {
+        std::cout << logFilename << std::endl;
+        logStats = true;
+        log.open(logFilename + ".log");
+    }
 }
 
-float KDTree::InitialSampling() {
+KDTree::~KDTree() {
+    if (logStats) log.close();
+}
+
+void KDTree::InitialSampling() {
 
     // Reset seeds
     cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
@@ -906,9 +925,6 @@ float KDTree::InitialSampling() {
     // Number of samples
     int numberOfLeaves = (1 << (bitsPerDim  * Point::DIM)) << (extraImgBits << 1);
     numberOfSamples = numberOfLeaves * maxLeafSize;
-
-    // Elapsed time
-    float time;
 
     // Grid and block size
     int minGridSize, blockSize;
@@ -918,32 +934,34 @@ float KDTree::InitialSampling() {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
         leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "INITIAL SAMPLING\n" << time << std::endl;
+    }
 
-    return time;
 }
 
-float KDTree::Construct(void) {
+void KDTree::Construct(void) {
 
     // Number of nodes
     int numberOfLeaves = numberOfSamples / maxLeafSize;
     numberOfNodes = 2 * numberOfLeaves - 1;
-
-    // Elapsed time
-    float time;
 
     // Grid and block size
     int minGridSize, blockSize;
@@ -953,30 +971,31 @@ float KDTree::Construct(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
-    constructKernel<<<gridSize, blockSize>>>(numberOfLeaves - 1, maxLeafSize, bitsPerDim, 
+    constructKernel<<<gridSize, blockSize>>>(numberOfLeaves - 1, maxLeafSize, bitsPerDim,
         extraImgBits, scaleX, scaleY, nodes.Data());
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-
-    return time;
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "CONSTRUCT\n" << time << std::endl;
+    }
 
 }
 
-float KDTree::UpdateIndices(void) {
+void KDTree::UpdateIndices(void) {
     
-    // Elapsed time
-    float time;
-
     // Grid and block size
     int minGridSize, blockSize;
     cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
@@ -985,27 +1004,29 @@ float KDTree::UpdateIndices(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     updateIndicesKernel<<<gridSize, blockSize>>>(numberOfNodes, nodes.Data());
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "UPDATE INDICES\n" << time << std::endl;
+    }
 
-    return time;
 }
 
-float KDTree::ComputeErrors(void) {
-
-    // Elapsed time
-    float time;
+void KDTree::ComputeErrors(void) {
 
     // Reset atomic counter
     const float zero = 0.0f;
@@ -1019,28 +1040,30 @@ float KDTree::ComputeErrors(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), leafIndices[swapBuffers].Data(), 
         errors.Data(), sampleValues.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data());
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "COMPUTE ERRORS\n" << time << std::endl;
+    }
 
-    return time;
 }
 
-float KDTree::AdaptiveSampling(void) {
-
-    // Elapsed time
-    float time;
+void KDTree::AdaptiveSampling(void) {
 
     // Reset locks
     cudaMemset(nodeLocks.Data(), 0, sizeof(unsigned long long) * GetNumberOfNodes());
@@ -1053,9 +1076,11 @@ float KDTree::AdaptiveSampling(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     adaptiveSamplingKernel<<<gridSize, blockSize>>>(
@@ -1078,19 +1103,19 @@ float KDTree::AdaptiveSampling(void) {
     );
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "ADAPTIVE SAMPLING\n" << time << std::endl;
+    }
 
-    return time;
 }
 
-float KDTree::Split(void) {
-
-    // Elapsed time
-    float time;
+void KDTree::Split(void) {
 
     // Reset atomic counter
     const int zero = 0;
@@ -1105,9 +1130,11 @@ float KDTree::Split(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     splitKernel<<<gridSize, blockSize>>>(
@@ -1126,23 +1153,23 @@ float KDTree::Split(void) {
     );
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "SPLIT\n" << time << std::endl;
+    }
 
     // Number of samples
     cudaMemcpyFromSymbol(&newSamples, g_warpCounter0, sizeof(int), 0);
     numberOfSamples += newSamples;
 
-    return time;
 }
 
-float KDTree::PrepareLeafIndices(void) {
-
-    // Elapsed time
-    float time;
+void KDTree::PrepareLeafIndices(void) {
 
     // Reset atomic counter
     const int zero = 0;
@@ -1157,9 +1184,11 @@ float KDTree::PrepareLeafIndices(void) {
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     prepareLeafIndicesKernel<<<gridSize, blockSize>>>(
@@ -1170,11 +1199,15 @@ float KDTree::PrepareLeafIndices(void) {
      );
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "PREPARE LEAF INDICES\n" << time << std::endl;
+    }
 
     // Number of nodes
     int newInteriors;
@@ -1190,31 +1223,23 @@ float KDTree::PrepareLeafIndices(void) {
             + newInteriors << " != " << GetNumberOfLeaves() << std::endl;
     }
 
-    return time;
 }
 
-float KDTree::Build() {
-    float time = 0.0f;
-    time += InitialSampling();
-    time += Construct();
+void KDTree::Build() {
+    InitialSampling();
+    Construct();
     swapBuffers = false;
-    return time;
 }
 
-float KDTree::SamplingPass(void) {
-    float time = 0.0f;
-    time += ComputeErrors();
-    time += AdaptiveSampling();
-    time += Split();
-    time += PrepareLeafIndices();
+void KDTree::SamplingPass(void) {
+    ComputeErrors();
+    AdaptiveSampling();
+    Split();
+    PrepareLeafIndices();
     swapBuffers = !swapBuffers;
-    return time;
 }
 
-float KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
-
-    // Elapsed time
-    float time;
+void KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
 
     // Grid and block size
     const int desiredWarps = 720;
@@ -1234,22 +1259,38 @@ float KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int heig
 
     // Timer
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start, 0);
+    if (logStats) {
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start, 0);
+    }
 
     // Launch
     integrateKernel<<<gridSize, blockSize>>>(width, height, scaleX, scaleY, sampleValues.Data(), pixels, pixelsBytes);
 
     // Elapsed time and cleanup
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    if (logStats) {
+        float time;
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&time, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        log << "INTEGRATE\n" << time << std::endl;
+    }
 
-    return time;
+}
 
+void KDTree::SamplingDensity(float4* pixels, int width, int height) {
+    float samplingDensity = 0.05f;
+    memset(pixels, 0, sizeof(float4) * width * height);
+    for (int i = 0; i < GetNumberOfSamples(); ++i) {
+        int x = sampleCoordinates[i][0] / scaleX * width;
+        int y = sampleCoordinates[i][1] / scaleY * height;
+        pixels[y * width + x] += make_float4(samplingDensity);
+    }
+    for (int i = 0; i < width * height; ++i)
+        pixels[i].w = 1.0f;
 }
 
 bool KDTree::Validate(void) {

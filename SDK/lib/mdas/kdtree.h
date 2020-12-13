@@ -3,6 +3,7 @@
 
 #include "buffer.h"
 #include "point.h"
+#include <fstream>
 
 namespace mdas {
 
@@ -31,20 +32,22 @@ public:
         }
     };
 
-    KDTree(int maxSamples = 1024);
+    KDTree(int maxSamples, const std::string& logFilename);
+    ~KDTree(void);
 
-    float InitialSampling(void);
-    float Construct(void);
-    float UpdateIndices(void);
+    void InitialSampling(void);
+    void Construct(void);
+    void UpdateIndices(void);
 
-    float ComputeErrors(void);
-    float AdaptiveSampling(void);
-    float Split(void);
-    float PrepareLeafIndices(void);
+    void ComputeErrors(void);
+    void AdaptiveSampling(void);
+    void Split(void);
+    void PrepareLeafIndices(void);
 
-    float Build(void);
-    float SamplingPass(void);
-    float Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    void Build(void);
+    void SamplingPass(void);
+    void Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    void SamplingDensity(float4* pixels, int width, int height);
     
     bool Validate(void);
 
@@ -63,6 +66,18 @@ public:
     float GetScaleY(void) { return scaleY; }
 
 private:
+
+    std::ofstream log;
+    bool logStats;
+
+    float initialSamplingTime;
+    float constructTime;
+    float updateIndicesTime;
+    float computeErrorsTime;
+    float adaptiveSamplingTime;
+    float splitTime;
+    float prepareLeafIndicesTime;
+    float integrateTime;
 
     int candidatesNum;
     int maxLeafSize;
