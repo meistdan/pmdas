@@ -76,9 +76,10 @@ sutil::Trackball  trackball;
 // Mouse state
 int32_t           mouse_button = -1;
 
-int32_t           samples_per_launch = 16;
+int32_t           max_samples = 10000000;
 int32_t           number_of_lights = 16;
-int32_t           mdas_iterations = -1;
+float             samples_per_launch = 1;
+bool              mdas_on = false;
 
 whitted::LaunchParams* d_params = nullptr;
 whitted::LaunchParams   params = {};
@@ -211,12 +212,12 @@ void printUsageAndExit(const char* argv0)
 {
     std::cerr << "Usage  : " << argv0 << " [options]\n";
     std::cerr << "Options: --file | -f <filename>      File for image output\n";
-    std::cerr << "          --dim=<width>x<height>      Set image dimensions; defaults to 768x768\n";
-    std::cerr << "         --launch-samples | -s       Number of samples per pixel per launch (default 16)\n";
+    std::cerr << "         --dim=<width>x<height>      Set image dimensions\n";
+    std::cerr << "         --launch-samples | -s       Number of samples per pixel per launch\n";
     std::cerr << "         --no-gl-interop             Disable GL interop for display\n";
     std::cerr << "         --model <model.gltf>        Specify model to render (required)\n";
     std::cerr << "         --lights | -l               Number of lights\n";
-    std::cerr << "         --mdas                      Specify MDAS iterations (negative values turn MDAS off)\n";
+    std::cerr << "         --mdas                      Enable/Disable MDAS\n";
     std::cerr << "         --help | -h                 Print this usage message\n";
     exit(0);
 }
@@ -281,7 +282,7 @@ void initLaunchParams(const sutil::Scene& scene) {
         cudaMemcpyHostToDevice
     ));
 
-    params.samples_per_launch = samples_per_launch;
+    params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
     params.miss_color = make_float3(0.1f);
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
@@ -293,7 +294,6 @@ void initLaunchParams(const sutil::Scene& scene) {
 
 void initMdas(std::ofstream* log = nullptr)
 {
-    const size_t max_samples = 10000000;
     kdtree = new mdas::KDTree(max_samples, log);
     kdtree->Build();
 
@@ -349,7 +349,7 @@ void updateState(
     if (camera_changed || resize_dirty)
     {
         params.subframe_index = 0;
-        if (mdas_iterations >= 0)
+        if (mdas_on)
         {
             kdtree->Build();
             params.sample_count = kdtree->GetNumberOfSamples();
@@ -368,7 +368,7 @@ void launchSubframe(
     const sutil::Scene& scene
 )
 {
-    if (mdas_iterations < 0)
+    if (!mdas_on)
     {
         float4* result_buffer_data = output_buffer.map();
         uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
@@ -383,7 +383,7 @@ void launchSubframe(
         0 // stream
     ));
 
-    if (mdas_iterations < 0)
+    if (!mdas_on)
     {
         OPTIX_CHECK(optixLaunch(
             scene.pipeline(),
@@ -533,7 +533,7 @@ int main(int argc, char* argv[])
         {
             if (i >= argc - 1)
                 printUsageAndExit(argv[0]);
-            samples_per_launch = atoi(argv[++i]);
+            samples_per_launch = atof(argv[++i]);
         }
         else if (arg == "--lights" || arg == "-l")
         {
@@ -545,7 +545,7 @@ int main(int argc, char* argv[])
         {
             if (i >= argc - 1)
                 printUsageAndExit(argv[0]);
-            mdas_iterations = atoi(argv[++i]);
+            mdas_on = static_cast<bool>(atoi(argv[++i]));
         }
         else
         {
@@ -563,7 +563,7 @@ int main(int argc, char* argv[])
 
     try
     {
-        sutil::Scene scene(mdas_iterations >= 0);
+        sutil::Scene scene(mdas_on);
         sutil::loadScene(infile.c_str(), scene);
         scene.finalize();
 
@@ -582,7 +582,7 @@ int main(int argc, char* argv[])
             glfwSetScrollCallback(window, scrollCallback);
             glfwSetWindowUserPointer(window, &params);
 
-            if (mdas_iterations >= 0) initMdas();
+            if (mdas_on) initMdas();
 
             //
             // Render loop
@@ -604,13 +604,12 @@ int main(int argc, char* argv[])
                     auto t1 = std::chrono::steady_clock::now();
                     state_update_time += t1 - t0;
                     t0 = t1;
-                    if (mdas_iterations >= 0)
+                    if (mdas_on)
                     {
                         if (params.subframe_index == 0)
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
-                        //if (params.subframe_index >= 1 && params.subframe_index <= mdas_iterations)
                         if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples() 
-                            + kdtree->GetNumberOfLeaves() <= kdtree->GetMaxSamples())
+                            + kdtree->GetNumberOfLeaves() <= max_samples)
                         {
                             samplingPassMdas();
                             std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
@@ -652,7 +651,7 @@ int main(int argc, char* argv[])
             handleResize(output_buffer, output_buffer_bytes);
 
             std::ofstream log(outfile + ".log");
-            if (mdas_iterations >= 0) initMdas(&log);
+            if (mdas_on) initMdas(&log);
             
             auto start = std::chrono::steady_clock::now();
             launchSubframe(output_buffer, output_buffer_bytes, scene);
@@ -660,9 +659,11 @@ int main(int argc, char* argv[])
             std::chrono::duration<double, std::milli> time = stop - start;
             log << "TRACE TIME\n" << time.count() << std::endl;
 
-            if (mdas_iterations >= 0)
+            if (mdas_on)
             {
-                for (int i = 0; i < mdas_iterations; ++i)
+                int total_samples = static_cast<int>(samples_per_launch * width * height);
+                std::cout << "total samples " << total_samples << std::endl;
+                while (kdtree->GetNumberOfSamples() < std::min(total_samples, max_samples))
                 {
                     samplingPassMdas();
                     auto start = std::chrono::steady_clock::now();
