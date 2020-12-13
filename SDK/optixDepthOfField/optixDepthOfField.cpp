@@ -291,10 +291,10 @@ void initLaunchParams(const sutil::Scene& scene) {
 }
 
 
-void initMdas(const std::string& outfile)
+void initMdas(std::ofstream* log = nullptr)
 {
     const size_t max_samples = 10000000;
-    kdtree = new mdas::KDTree(max_samples, outfile);
+    kdtree = new mdas::KDTree(max_samples, log);
     kdtree->Build();
 
     params.scale = make_float2(kdtree->GetScaleX(), kdtree->GetScaleY());
@@ -570,9 +570,7 @@ int main(int argc, char* argv[])
         OPTIX_CHECK(optixInit()); // Need to initialize function table
         initCameraState(scene);
         initLaunchParams(scene);
-        if (mdas_iterations >= 0)
-            initMdas(outfile);
-
+        
         if (outfile.empty())
         {
             GLFWwindow* window = sutil::initUI("optixDepthOfField", width, height);
@@ -583,6 +581,8 @@ int main(int argc, char* argv[])
             glfwSetKeyCallback(window, keyCallback);
             glfwSetScrollCallback(window, scrollCallback);
             glfwSetWindowUserPointer(window, &params);
+
+            if (mdas_iterations >= 0) initMdas();
 
             //
             // Render loop
@@ -645,24 +645,48 @@ int main(int argc, char* argv[])
         else
         {
             output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
-
             sutil::CUDAOutputBuffer<uchar4> output_buffer_bytes(output_buffer_type, width, height);
             sutil::CUDAOutputBuffer<float4> output_buffer(output_buffer_type, width, height);
 
             handleCameraUpdate(params);
             handleResize(output_buffer, output_buffer_bytes);
+
+            std::ofstream log(outfile + ".log");
+            if (mdas_iterations >= 0) initMdas(&log);
+            
+            auto start = std::chrono::steady_clock::now();
             launchSubframe(output_buffer, output_buffer_bytes, scene);
+            auto stop = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::milli> time = stop - start;
+            log << "TRACE TIME\n" << time.count() << std::endl;
+
             if (mdas_iterations >= 0)
             {
                 for (int i = 0; i < mdas_iterations; ++i)
                 {
                     samplingPassMdas();
+                    auto start = std::chrono::steady_clock::now();
                     launchSubframe(output_buffer, output_buffer_bytes, scene);
+                    auto stop = std::chrono::steady_clock::now();
+                    std::chrono::duration<double, std::milli> time = stop - start;
+                    log << "TRACE TIME\n" << time.count() << std::endl;
                     std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
                         ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
                 }
                 integrateMdas(output_buffer, output_buffer_bytes);
+
+                sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
+                std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.ppm";
+                sutil::ImageBuffer density_buffer;
+                density_buffer.width = output_density_buffer.width();
+                density_buffer.height = output_density_buffer.height();
+                density_buffer.data = output_density_buffer.getHostPointer();
+                density_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
+                samplingDensityMdas(density_buffer);
+                sutil::saveImage(density_outfile.c_str(), density_buffer, false);
             }
+            log.close();
+
             sutil::ImageBuffer buffer;
             buffer.width = output_buffer.width();
             buffer.height = output_buffer.height();
@@ -676,19 +700,6 @@ int main(int argc, char* argv[])
                 buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
             }
             sutil::saveImage(outfile.c_str(), buffer, false);
-
-            if (mdas_iterations >= 0)
-            {
-                sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
-                std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.ppm";
-                sutil::ImageBuffer density_buffer;
-                density_buffer.width = output_density_buffer.width();
-                density_buffer.height = output_density_buffer.height();
-                density_buffer.data = output_density_buffer.getHostPointer();
-                density_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
-                samplingDensityMdas(density_buffer);
-                sutil::saveImage(density_outfile.c_str(), density_buffer, false);
-            }
 
             if (output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP)
             {

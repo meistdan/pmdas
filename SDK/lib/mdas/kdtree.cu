@@ -879,7 +879,8 @@ __global__ void integrateKernel(
 
 }
 
-KDTree::KDTree(int maxSamples, const std::string& logFilename) : 
+
+KDTree::KDTree(int maxSamples, std::ofstream* log) : 
     maxLeafSize(4), 
     candidatesNum(1), 
     bitsPerDim(0), 
@@ -889,7 +890,9 @@ KDTree::KDTree(int maxSamples, const std::string& logFilename) :
     maxSamples(maxSamples), 
     scaleX(1024.0f), 
     scaleY(512.0f), 
-    errorThreshold(0.1f)
+    errorThreshold(0.1f),
+    logStats(false),
+    log(log)
 {
     seeds.Resize(maxSamples);
     sampleCoordinates.Resize(maxSamples);
@@ -903,18 +906,10 @@ KDTree::KDTree(int maxSamples, const std::string& logFilename) :
     leafIndices[0].Resize(maxSamples);
     leafIndices[1].Resize(maxSamples);
     errors.Resize(maxSamples);
+    if (log != nullptr) logStats = true;
     int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
     int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
     std::cout << "Initial samples " << numberOfInitialSamples << std::endl;
-    if (!logFilename.empty()) {
-        std::cout << logFilename << std::endl;
-        logStats = true;
-        log.open(logFilename + ".log");
-    }
-}
-
-KDTree::~KDTree() {
-    if (logStats) log.close();
 }
 
 void KDTree::InitialSampling() {
@@ -952,7 +947,8 @@ void KDTree::InitialSampling() {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "INITIAL SAMPLING\n" << time << std::endl;
+        *log << "INITIAL SAMPLES\n" << numberOfSamples << std::endl;
+        *log << "INITIAL SAMPLING TIME\n" << time << std::endl;
     }
 
 }
@@ -989,7 +985,7 @@ void KDTree::Construct(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "CONSTRUCT\n" << time << std::endl;
+        *log << "CONSTRUCT TIME\n" << time << std::endl;
     }
 
 }
@@ -1021,7 +1017,7 @@ void KDTree::UpdateIndices(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "UPDATE INDICES\n" << time << std::endl;
+        *log << "UPDATE INDICES TIME\n" << time << std::endl;
     }
 
 }
@@ -1058,7 +1054,7 @@ void KDTree::ComputeErrors(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "COMPUTE ERRORS\n" << time << std::endl;
+        *log << "COMPUTE ERRORS TIME\n" << time << std::endl;
     }
 
 }
@@ -1110,7 +1106,7 @@ void KDTree::AdaptiveSampling(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "ADAPTIVE SAMPLING\n" << time << std::endl;
+        *log << "ADAPTIVE SAMPLING TIME\n" << time << std::endl;
     }
 
 }
@@ -1160,7 +1156,7 @@ void KDTree::Split(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "SPLIT\n" << time << std::endl;
+        *log << "SPLIT TIME\n" << time << std::endl;
     }
 
     // Number of samples
@@ -1206,7 +1202,8 @@ void KDTree::PrepareLeafIndices(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "PREPARE LEAF INDICES\n" << time << std::endl;
+        *log << "PREPARE LEAF INDICES TIME\n" << time << std::endl;
+        *log << "SAMPLES\n" << newSamples << std::endl;
     }
 
     // Number of nodes
@@ -1276,7 +1273,8 @@ void KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int heigh
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        log << "INTEGRATE\n" << time << std::endl;
+        *log << "TOTAL SAMPLES\n" << numberOfSamples << std::endl;
+        *log << "INTEGRATE TIME\n" << time << std::endl;
     }
 
 }

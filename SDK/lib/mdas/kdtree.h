@@ -32,8 +32,7 @@ public:
         }
     };
 
-    KDTree(int maxSamples, const std::string& logFilename);
-    ~KDTree(void);
+    KDTree(int maxSamples, std::ofstream* out = nullptr);
 
     void InitialSampling(void);
     void Construct(void);
@@ -67,17 +66,8 @@ public:
 
 private:
 
-    std::ofstream log;
+    std::ofstream* log;
     bool logStats;
-
-    float initialSamplingTime;
-    float constructTime;
-    float updateIndicesTime;
-    float computeErrorsTime;
-    float adaptiveSamplingTime;
-    float splitTime;
-    float prepareLeafIndicesTime;
-    float integrateTime;
 
     int candidatesNum;
     int maxLeafSize;
