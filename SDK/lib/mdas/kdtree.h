@@ -76,13 +76,11 @@ private:
     int numberOfSamples;
     int numberOfNodes;
     int maxSamples;
-    bool swapBuffers;
 
     float scaleX;
     float scaleY;
     float errorThreshold;
 
-    Buffer<unsigned int> seeds;
     Buffer<Point> sampleCoordinates;
     Buffer<float3> sampleValues;
 
@@ -92,8 +90,9 @@ private:
     Buffer<unsigned long long> nodeLocks;
 
     Buffer<Point> leafSamples;
-    Buffer<int> leafIndices[2];
+    Buffer<int> leafIndices;
     Buffer<float> errors;
+    Buffer<unsigned int> seeds;
 
 };
 

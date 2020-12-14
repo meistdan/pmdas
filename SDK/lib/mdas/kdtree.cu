@@ -436,8 +436,7 @@ __global__ void splitKernel(
     int numberOfNodes,
     int numberOfSamples,
     int maxLeafSize,
-    int* leafIndices0,
-    int* leafIndices1,
+    int* leafIndices,
     float* errors,
     unsigned long long* nodeLocks,
     KDTree::Node* nodes,
@@ -459,10 +458,7 @@ __global__ void splitKernel(
     if (leafIndex < numberOfLeaves) {
 
         // Node index
-        int nodeIndex = leafIndices0[leafIndex];
-
-        // New node index
-        int newNodeIndex = nodeIndex;
+        int nodeIndex = leafIndices[leafIndex];
 
         // Lock node
         unsigned long long lock = nodeLocks[nodeIndex];
@@ -602,8 +598,8 @@ __global__ void splitKernel(
                 nodeszw[node.right] = make_float4(rightBox.mn[2], rightBox.mx[2], rightBox.mn[3], rightBox.mx[3]);
 
                 // New leaf indices and reset error
-                newNodeIndex = node.left;
-                leafIndices1[leafOffset] = node.right;
+                leafIndices[leafIndex] = node.left;
+                leafIndices[leafOffset] = node.right;
 
                 // Reset errors
                 errors[leafIndex] = -1.0f;
@@ -616,77 +612,9 @@ __global__ void splitKernel(
 
         }
 
-        // Write node index
-        leafIndices1[leafIndex] = newNodeIndex;
-
     }
 
 }
-
-__global__ void prepareLeafIndicesKernel(
-    int numberOfLeaves,
-    int* leafIndices0,
-    int* leafIndices1,
-    KDTree::Node* nodes
-) {
-
-    // Leaf index.
-    const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    // Warp thread index.
-    const int warpThreadIndex = threadIdx.x & 31;
-
-    if (leafIndex < numberOfLeaves) {
-
-        // Node
-        int nodeIndex = leafIndices0[leafIndex];
-        KDTree::Node node = nodes[nodeIndex];
-
-        // Prefix scan
-        const unsigned int activeMask = __activemask();
-        const unsigned int warpBallot = __ballot_sync(activeMask, !node.Leaf());
-        const int warpThreads = __popc(activeMask);
-        const int warpCount = __popc(warpBallot);
-        const int warpIndex = __popc(warpBallot & ((1u << warpThreadIndex) - 1));
-
-        // Not splitted => Just copy leaf index
-        if (node.Leaf()) {
-
-            // Atomically add to global counter and exchange the offset
-            int warpOffset;
-            const unsigned int activeMaskLeaf = __activemask();
-            const int warpLeader = __ffs(activeMaskLeaf) - 1;
-            if (warpThreadIndex == warpLeader)
-                warpOffset = atomicAdd(&g_warpCounter1, warpThreads - warpCount);
-            warpOffset = __shfl_sync(activeMaskLeaf, warpOffset, warpLeader);
-
-            // Leaf index
-            int newLeafIndex = warpOffset + (warpThreadIndex - warpIndex);
-            leafIndices1[newLeafIndex] = nodeIndex;
-            
-        }
-
-        // Split => Place new child indices
-        else {
-
-            // Atomically add to global counter and exchange the offset
-            int warpOffset;
-            const unsigned int activeMaskInterior = __activemask();
-            const int warpLeader = __ffs(activeMaskInterior) - 1;
-            if (warpThreadIndex == warpLeader)
-                warpOffset = atomicAdd(&g_warpCounter0, warpCount);
-            warpOffset = __shfl_sync(activeMaskInterior, warpOffset, warpLeader);
-
-            // New leaf indices
-            leafIndices1[numberOfLeaves - 1 - (warpOffset + warpIndex)] = node.left;
-            leafIndices1[numberOfLeaves + warpOffset + warpIndex] = node.right;
-
-        }
-
-    }
-
-}
-
 __global__ void integrateKernel(
     int width,
     int height,
@@ -894,8 +822,7 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     nodeszw.Resize(2 * maxSamples - 1);
     nodeLocks.Resize(2 * maxSamples - 1);
     leafSamples.Resize(maxSamples);
-    leafIndices[0].Resize(maxSamples);
-    leafIndices[1].Resize(maxSamples);
+    leafIndices.Resize(maxSamples);
     errors.Resize(maxSamples);
     if (log != nullptr) logStats = true;
     int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
@@ -928,7 +855,7 @@ void KDTree::InitialSampling() {
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
-        errors.Data(), leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
+        errors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1034,7 +961,7 @@ void KDTree::ComputeErrors(void) {
     }
 
     // Launch
-    computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), leafIndices[swapBuffers].Data(), 
+    computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), leafIndices.Data(), 
         errors.Data(), sampleValues.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data());
 
     // Elapsed time and cleanup
@@ -1077,7 +1004,7 @@ void KDTree::AdaptiveSampling(void) {
         errorThreshold, 
         scaleX,
         scaleY,
-        leafIndices[swapBuffers].Data(), 
+        leafIndices.Data(), 
         errors.Data(), 
         nodeLocks.Data(), 
         nodes.Data(),
@@ -1128,8 +1055,7 @@ void KDTree::Split(void) {
         numberOfNodes,
         numberOfSamples,
         maxLeafSize,
-        leafIndices[swapBuffers].Data(),
-        leafIndices[!swapBuffers].Data(),
+        leafIndices.Data(),
         errors.Data(),
         nodeLocks.Data(),
         nodes.Data(),
@@ -1165,14 +1091,12 @@ void KDTree::Split(void) {
 void KDTree::Build() {
     InitialSampling();
     Construct();
-    swapBuffers = false;
 }
 
 void KDTree::SamplingPass(void) {
     ComputeErrors();
     AdaptiveSampling();
     Split();
-    swapBuffers = !swapBuffers;
 }
 
 void KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
@@ -1325,7 +1249,7 @@ bool KDTree::Validate(void) {
                << " " << sampleCoordinates[i][2] << " " << sampleCoordinates[i][3] << std::endl;
             for (int k = 0; k < GetNumberOfLeaves(); ++k) {
                 for (int j = 0; j < 4; ++j) {
-                    int nodeIndex = leafIndices[swapBuffers][k];
+                    int nodeIndex = leafIndices[k];
                     KDTree::Node curNode = nodes[nodeIndex];
                     if (curNode.indices[j] == i) {
                         AABB box;
@@ -1379,7 +1303,7 @@ bool KDTree::Validate(void) {
             std::cout << "Histogram " << sampleHist[i] << std::endl;
             for (int k = 0; k < GetNumberOfLeaves(); ++k) {
                 for (int j = 0; j < 4; ++j) {
-                    int nodeIndex = leafIndices[swapBuffers][k];
+                    int nodeIndex = leafIndices[k];
                     KDTree::Node curNode = nodes[nodeIndex];
                     if (curNode.indices[j] == i) {
                         contains = true;
