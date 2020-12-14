@@ -77,7 +77,7 @@ sutil::Trackball  trackball;
 int32_t           mouse_button = -1;
 
 int32_t           max_samples = 10000000;
-int32_t           number_of_lights = 16;
+int32_t           number_of_lights = 32;
 float             samples_per_launch = 1;
 bool              mdas_on = false;
 
@@ -666,10 +666,10 @@ int main(int argc, char* argv[])
                 while (kdtree->GetNumberOfSamples() < std::min(total_samples, max_samples))
                 {
                     samplingPassMdas();
-                    auto start = std::chrono::steady_clock::now();
+                    start = std::chrono::steady_clock::now();
                     launchSubframe(output_buffer, output_buffer_bytes, scene);
-                    auto stop = std::chrono::steady_clock::now();
-                    std::chrono::duration<double, std::milli> time = stop - start;
+                    stop = std::chrono::steady_clock::now();
+                    time = stop - start;
                     log << "TRACE TIME\n" << time.count() << std::endl;
                     std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
                         ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
@@ -677,7 +677,7 @@ int main(int argc, char* argv[])
                 integrateMdas(output_buffer, output_buffer_bytes);
 
                 sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
-                std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.ppm";
+                std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.exr";
                 sutil::ImageBuffer density_buffer;
                 density_buffer.width = output_density_buffer.width();
                 density_buffer.height = output_density_buffer.height();
@@ -695,7 +695,8 @@ int main(int argc, char* argv[])
             buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
 
             const std::string ext = outfile.substr(outfile.length() - 3);
-            if (ext == "PPM" || ext == "ppm")
+            //if (ext == "PPM" || ext == "ppm")
+            if (ext == "EXR" || ext == "exr")
             {
                 buffer.data = output_buffer.getHostPointer();
                 buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;

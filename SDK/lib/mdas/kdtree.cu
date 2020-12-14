@@ -273,6 +273,12 @@ __global__ void computeErrorsKernel(
     // Leaf index.
     const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
+    // Warp thread index.
+    const int warpThreadIndex = threadIdx.x & 31;
+
+    // Error
+    float error = 0.0f;
+
     if (leafIndex < numberOfLeaves) {
 
         // Node
@@ -288,9 +294,11 @@ __global__ void computeErrorsKernel(
         // Average value
         float3 avgValue = make_float3(0.0f);
         int sampleCount = 0;
+        float3 sampleValuesLoc[4];
         for (int i = 0; i < 4; ++i) {
             if (node.indices[i] >= 0) {
-                avgValue += sampleValues[node.indices[i]];
+                sampleValuesLoc[i] = sampleValues[node.indices[i]];
+                avgValue += sampleValuesLoc[i];
                 sampleCount++;
             }
         }
@@ -299,14 +307,13 @@ __global__ void computeErrorsKernel(
         // Sum of differences
         float3 diffSum = make_float3(0.0f);
         for (int i = 0; i < sampleCount; ++i) {
-            float3 sampleValue = sampleValues[node.indices[i]];
+            float3 sampleValue = sampleValuesLoc[i];
             diffSum.x += fabs(sampleValue.x - avgValue.x);
             diffSum.y += fabs(sampleValue.y - avgValue.y);
             diffSum.z += fabs(sampleValue.z - avgValue.z);
         }
 
         // Error
-        float error = 0.0f;
         if (avgValue.x != 0.0f) error += diffSum.x / avgValue.x;
         if (avgValue.y != 0.0f) error += diffSum.y / avgValue.y;
         if (avgValue.z != 0.0f) error += diffSum.z / avgValue.z;
@@ -317,11 +324,19 @@ __global__ void computeErrorsKernel(
         // Write error
         errors[leafIndex] = error;
         
-        // Max error (prefix scan?)
-        if (error > g_error)
-            atomicMax((int*)&g_error, __float_as_int(error));
-
     }
+
+    // Warp-wide reduction
+    float maxError = error;
+    maxError = fmax(maxError, __shfl_xor_sync(0xffffffff, maxError, 1));
+    maxError = fmax(maxError, __shfl_xor_sync(0xffffffff, maxError, 2));
+    maxError = fmax(maxError, __shfl_xor_sync(0xffffffff, maxError, 4));
+    maxError = fmax(maxError, __shfl_xor_sync(0xffffffff, maxError, 8));
+    maxError = fmax(maxError, __shfl_xor_sync(0xffffffff, maxError, 16));
+
+    // Max error
+    if (warpThreadIndex == 0)
+        atomicMax((int*)&g_error, __float_as_int(maxError));
 
 }
 
@@ -346,7 +361,7 @@ __global__ void adaptiveSamplingKernel(
 
     // Leaf index.
     const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
+    
     if (leafIndex < numberOfLeaves) {
 
         // Error
@@ -588,7 +603,7 @@ __global__ void splitKernel(
                     nodeOffset = numberOfNodes + 2 * (warpOffset + warpIndex);
                 }
 
-                // Chil indices
+                // Child indices
                 node.left = nodeOffset;
                 node.right = nodeOffset + 1;
 

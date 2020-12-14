@@ -633,6 +633,9 @@ void saveImage( const char* fname, const ImageBuffer& image, bool disable_srgb_c
 
     else if(  ext == "EXR" || ext == "exr" )
     {
+        const int32_t width = image.width;
+        const int32_t height = image.height;
+        
         switch( image.pixel_format )
         {
             case BufferImageFormat::UNSIGNED_BYTE4:
@@ -642,9 +645,21 @@ void saveImage( const char* fname, const ImageBuffer& image, bool disable_srgb_c
 
             case BufferImageFormat::FLOAT3:
             {
+                std::vector<float> pix(width * height * 3);
+                for (int j = height - 1; j >= 0; --j)
+                {
+                    for (int i = 0; i < width; ++i)
+                    {
+                        const int32_t dst_idx = 3 * width * (height - j - 1) + 3 * i;
+                        const int32_t src_idx = 4 * width * j + 4 * i;
+                        pix[dst_idx + 1] = reinterpret_cast<float*>(image.data)[src_idx + 1];
+                        pix[dst_idx + 2] = reinterpret_cast<float*>(image.data)[src_idx + 2];
+                        pix[dst_idx + 3] = reinterpret_cast<float*>(image.data)[src_idx + 3];
+                    }
+                }
                 const char* err;
                 int32_t ret = SaveEXR(
-                        reinterpret_cast<float*>( image.data ),
+                        pix.data(),
                         image.width,
                         image.height,
                         3, // num components
@@ -659,9 +674,22 @@ void saveImage( const char* fname, const ImageBuffer& image, bool disable_srgb_c
 
             case BufferImageFormat::FLOAT4:
             {
+                std::vector<float> pix(width * height * 4);
+                for (int j = height - 1; j >= 0; --j)
+                {
+                    for (int i = 0; i < width; ++i)
+                    {
+                        const int32_t dst_idx = 4 * width * (height - j - 1) + 4 * i;
+                        const int32_t src_idx = 4 * width * j + 4 * i;
+                        pix[dst_idx + 0] = reinterpret_cast<float*>(image.data)[src_idx + 0];
+                        pix[dst_idx + 1] = reinterpret_cast<float*>(image.data)[src_idx + 1];
+                        pix[dst_idx + 2] = reinterpret_cast<float*>(image.data)[src_idx + 2];
+                        pix[dst_idx + 3] = reinterpret_cast<float*>(image.data)[src_idx + 3];
+                    }
+                }
                 const char* err;
                 int32_t ret = SaveEXR(
-                        reinterpret_cast<float*>( image.data ),
+                        pix.data(),
                         image.width,
                         image.height,
                         4, // num components
