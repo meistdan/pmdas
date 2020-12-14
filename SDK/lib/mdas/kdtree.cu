@@ -184,54 +184,6 @@ __global__ void constructKernel(
 
 }
 
-__global__ void computeBoxesKernel(
-    int numberOfNodes,
-    float scaleX,
-    float scaleY,
-    KDTree::Node* nodes,
-    float4* nodesxy,
-    float4* nodeszw
-) {
-
-    // Sample index.
-    const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (nodeIndex < numberOfNodes) {
-
-        // Node
-        KDTree::Node node = nodes[0];
-
-        // Bounding box
-        AABB box;
-        box.mn = Point(0.0f);
-        box.mx = Point(1.0f);
-        box.mx[0] = scaleX;
-        box.mx[1] = scaleY;
-
-        // Split dimension
-        const int bit = 8 * sizeof(unsigned int) - __clz(unsigned int(nodeIndex + 1)) - 1;
-
-        // Split position
-        unsigned int c = nodeIndex - (1 << bit) + 1;
-        for (int t = bit - 1; t >= 0; t--) {
-            if ((c >> t) & 1) {
-                box.mn[~node.dimension] = node.position;
-                node = nodes[node.right];
-            }
-            else {
-                box.mx[~node.dimension] = node.position;
-                node = nodes[node.left];
-            }
-        }
-
-        // Node box
-        nodesxy[nodeIndex] = make_float4(box.mn[0], box.mx[0], box.mn[1], box.mx[1]);
-        nodeszw[nodeIndex] = make_float4(box.mn[2], box.mx[2], box.mn[3], box.mx[3]);
-
-    }
-
-}
-
 __global__ void updateIndicesKernel(
     int numberOfNodes,
     KDTree::Node* nodes
