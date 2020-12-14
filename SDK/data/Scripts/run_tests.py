@@ -20,7 +20,8 @@ if os.path.exists(stats_filename):
     os.remove(stats_filename)
 
 ref_spp = 1024
-spp = [0.25, 0.5, 1, 2, 4]
+#spp = [0.25, 0.5, 1, 2, 4]
+spp = [4]
 
 
 def read_image(filename):
@@ -71,7 +72,7 @@ def run(spp, mdas, ref):
 
 
 # reference
-run(ref_spp, False, True)
+#run(ref_spp, False, True)
 
 # ref test name
 ref_test_name = scene_name

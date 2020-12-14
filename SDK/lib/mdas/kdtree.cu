@@ -51,6 +51,7 @@ __global__ void uniformSamplingKernel(
     int extraImgBits,
     float scaleX,
     float scaleY,
+    float* errors,
     int* leafIndices,
     Point* sampleCoordinates,
     KDTree::Node* nodes,
@@ -112,9 +113,10 @@ __global__ void uniformSamplingKernel(
         }
         seeds[leafIndex] = seed;
         
-        // Node index
+        // Node index and error
         int nodeIndex = leafIndex + numberOfLeaves - 1;
         leafIndices[leafIndex] = nodeIndex;
+        errors[leafIndex] = -1;
 
         // Write node
         nodes[nodeIndex] = node;
@@ -233,48 +235,56 @@ __global__ void computeErrorsKernel(
 
     if (leafIndex < numberOfLeaves) {
 
-        // Node
-        int nodeIndex = leafIndices[leafIndex];
-        KDTree::Node node = nodes[nodeIndex];
-
-        // Volume
-        float4 nodexy = nodesxy[nodeIndex];
-        float4 nodezw = nodeszw[nodeIndex];
-        float volume = (nodexy.y - nodexy.x) * (nodexy.w - nodexy.z)
-            * (nodezw.y - nodezw.x) * (nodezw.w - nodezw.z);
-
-        // Average value
-        float3 avgValue = make_float3(0.0f);
-        int sampleCount = 0;
-        float3 sampleValuesLoc[4];
-        for (int i = 0; i < 4; ++i) {
-            if (node.indices[i] >= 0) {
-                sampleValuesLoc[i] = sampleValues[node.indices[i]];
-                avgValue += sampleValuesLoc[i];
-                sampleCount++;
-            }
-        }
-        avgValue /= float(sampleCount);
-
-        // Sum of differences
-        float3 diffSum = make_float3(0.0f);
-        for (int i = 0; i < sampleCount; ++i) {
-            float3 sampleValue = sampleValuesLoc[i];
-            diffSum.x += fabs(sampleValue.x - avgValue.x);
-            diffSum.y += fabs(sampleValue.y - avgValue.y);
-            diffSum.z += fabs(sampleValue.z - avgValue.z);
-        }
-
         // Error
-        if (avgValue.x != 0.0f) error += diffSum.x / avgValue.x;
-        if (avgValue.y != 0.0f) error += diffSum.y / avgValue.y;
-        if (avgValue.z != 0.0f) error += diffSum.z / avgValue.z;
-        error /= float(sampleCount);
-        error += 1.0e-5;
-        error *= volume;
+        error = errors[leafIndex];
 
-        // Write error
-        errors[leafIndex] = error;
+        // Only for new nodes
+        if (error < 0.0f) {
+
+            // Node
+            int nodeIndex = leafIndices[leafIndex];
+            KDTree::Node node = nodes[nodeIndex];
+
+            // Volume
+            float4 nodexy = nodesxy[nodeIndex];
+            float4 nodezw = nodeszw[nodeIndex];
+            float volume = (nodexy.y - nodexy.x) * (nodexy.w - nodexy.z)
+                * (nodezw.y - nodezw.x) * (nodezw.w - nodezw.z);
+
+            // Average value
+            float3 avgValue = make_float3(0.0f);
+            int sampleCount = 0;
+            float3 sampleValuesLoc[4];
+            for (int i = 0; i < 4; ++i) {
+                if (node.indices[i] >= 0) {
+                    sampleValuesLoc[i] = sampleValues[node.indices[i]];
+                    avgValue += sampleValuesLoc[i];
+                    sampleCount++;
+                }
+            }
+            avgValue /= float(sampleCount);
+
+            // Sum of differences
+            float3 diffSum = make_float3(0.0f);
+            for (int i = 0; i < sampleCount; ++i) {
+                float3 sampleValue = sampleValuesLoc[i];
+                diffSum.x += fabs(sampleValue.x - avgValue.x);
+                diffSum.y += fabs(sampleValue.y - avgValue.y);
+                diffSum.z += fabs(sampleValue.z - avgValue.z);
+            }
+
+            // Error
+            if (avgValue.x != 0.0f) error += diffSum.x / avgValue.x;
+            if (avgValue.y != 0.0f) error += diffSum.y / avgValue.y;
+            if (avgValue.z != 0.0f) error += diffSum.z / avgValue.z;
+            error /= float(sampleCount);
+            error += 1.0e-5;
+            error *= volume;
+
+            // Write error
+            errors[leafIndex] = error;
+
+        }
         
     }
 
@@ -428,6 +438,7 @@ __global__ void splitKernel(
     int maxLeafSize,
     int* leafIndices0,
     int* leafIndices1,
+    float* errors,
     unsigned long long* nodeLocks,
     KDTree::Node* nodes,
     float4* nodesxy,
@@ -590,9 +601,13 @@ __global__ void splitKernel(
                 nodesxy[node.right] = make_float4(rightBox.mn[0], rightBox.mx[0], rightBox.mn[1], rightBox.mx[1]);
                 nodeszw[node.right] = make_float4(rightBox.mn[2], rightBox.mx[2], rightBox.mn[3], rightBox.mx[3]);
 
-                // Children as new leaves
+                // New leaf indices and reset error
                 newNodeIndex = node.left;
                 leafIndices1[leafOffset] = node.right;
+
+                // Reset errors
+                errors[leafIndex] = -1.0f;
+                errors[leafOffset] = -1.0f;
 
             }
 
@@ -913,7 +928,7 @@ void KDTree::InitialSampling() {
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
-        leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
+        errors.Data(), leafIndices[0].Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1115,6 +1130,7 @@ void KDTree::Split(void) {
         maxLeafSize,
         leafIndices[swapBuffers].Data(),
         leafIndices[!swapBuffers].Data(),
+        errors.Data(),
         nodeLocks.Data(),
         nodes.Data(),
         nodesxy.Data(),
@@ -1327,20 +1343,6 @@ bool KDTree::Validate(void) {
                     }
                 }
             }
-            //Point candidate = sampleCoordinates[i];
-            //int curNodeIndex = 0;
-            //KDTree::Node curNode = nodes[curNodeIndex];
-            //while (!curNode.Leaf()) {
-            //    if (candidate[~curNode.dimension] < curNode.position)
-            //        curNodeIndex = curNode.left < 0 ? ~curNode.left : curNode.left;
-            //    else
-            //        curNodeIndex = curNode.right < 0 ? ~curNode.right : curNode.right;
-            //    curNode = nodes[curNodeIndex];
-            //}
-            //std::cout << "indices:\n";
-            //for (int j = 0; j < 4; ++j)
-            //    std::cout << curNode.indices[i] << " ";
-            //std::cout << "done" << std::endl;
         }
     }
 
