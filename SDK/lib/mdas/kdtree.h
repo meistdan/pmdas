@@ -41,7 +41,6 @@ public:
     void ComputeErrors(void);
     void AdaptiveSampling(void);
     void Split(void);
-    void PrepareLeafIndices(void);
 
     void Build(void);
     void SamplingPass(void);
@@ -94,7 +93,6 @@ private:
 
     Buffer<Point> leafSamples;
     Buffer<int> leafIndices[2];
-    Buffer<int> outNodeIndices;
     Buffer<float> errors;
 
 };

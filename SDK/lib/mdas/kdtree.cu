@@ -347,7 +347,6 @@ __global__ void adaptiveSamplingKernel(
     float errorThreshold,
     float scaleX,
     float scaleY,
-    int* outNodeIndices,
     int* leafIndices,
     float* errors,
     unsigned long long* nodeLocks,
@@ -459,7 +458,6 @@ __global__ void adaptiveSamplingKernel(
 
             // Sample coordinates and node index
             leafSamples[leafIndex] = maxCandidate;
-            outNodeIndices[leafIndex] = outNodeIndex;
 
             // Lock node
             unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex + 1);
@@ -476,10 +474,9 @@ __global__ void splitKernel(
     int numberOfNodes,
     int numberOfSamples,
     int maxLeafSize,
-    int* leafIndices,
-    int* outNodeIndices,//
+    int* leafIndices0,
+    int* leafIndices1,
     unsigned long long* nodeLocks,
-    float* errors,//
     KDTree::Node* nodes,
     float4* nodesxy,
     float4* nodeszw,
@@ -499,7 +496,10 @@ __global__ void splitKernel(
     if (leafIndex < numberOfLeaves) {
 
         // Node index
-        int nodeIndex = leafIndices[leafIndex];
+        int nodeIndex = leafIndices0[leafIndex];
+
+        // New node index
+        int newNodeIndex = nodeIndex;
 
         // Lock node
         unsigned long long lock = nodeLocks[nodeIndex];
@@ -589,6 +589,7 @@ __global__ void splitKernel(
 
                 // Node offset
                 int nodeOffset;
+                int leafOffset;
                 {
                     // Prefix scan
                     const unsigned int activeMask = __activemask();
@@ -602,6 +603,7 @@ __global__ void splitKernel(
                         warpOffset = atomicAdd(&g_warpCounter1, warpCount);
                     warpOffset = __shfl_sync(activeMask, warpOffset, warpLeader);
                     nodeOffset = numberOfNodes + 2 * (warpOffset + warpIndex);
+                    leafOffset = numberOfLeaves + warpOffset + warpIndex;
                 }
 
                 // Child indices
@@ -636,12 +638,19 @@ __global__ void splitKernel(
                 nodesxy[node.right] = make_float4(rightBox.mn[0], rightBox.mx[0], rightBox.mn[1], rightBox.mx[1]);
                 nodeszw[node.right] = make_float4(rightBox.mn[2], rightBox.mx[2], rightBox.mn[3], rightBox.mx[3]);
 
+                // Children as new leaves
+                newNodeIndex = node.left;
+                leafIndices1[leafOffset] = node.right;
+
             }
 
             // Write node
             nodes[nodeIndex] = node;
 
         }
+
+        // Write node index
+        leafIndices1[leafIndex] = newNodeIndex;
 
     }
 
@@ -917,7 +926,6 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     nodesxy.Resize(2 * maxSamples - 1);
     nodeszw.Resize(2 * maxSamples - 1);
     nodeLocks.Resize(2 * maxSamples - 1);
-    outNodeIndices.Resize(maxSamples);
     leafSamples.Resize(maxSamples);
     leafIndices[0].Resize(maxSamples);
     leafIndices[1].Resize(maxSamples);
@@ -1102,7 +1110,6 @@ void KDTree::AdaptiveSampling(void) {
         errorThreshold, 
         scaleX,
         scaleY,
-        outNodeIndices.Data(), 
         leafIndices[swapBuffers].Data(), 
         errors.Data(), 
         nodeLocks.Data(), 
@@ -1155,15 +1162,23 @@ void KDTree::Split(void) {
         numberOfSamples,
         maxLeafSize,
         leafIndices[swapBuffers].Data(),
-        outNodeIndices.Data(),
+        leafIndices[!swapBuffers].Data(),
         nodeLocks.Data(),
-        errors.Data(),
         nodes.Data(),
         nodesxy.Data(),
         nodeszw.Data(),
         leafSamples.Data(),
         sampleCoordinates.Data()
     );
+
+    // Number of samples
+    cudaMemcpyFromSymbol(&newSamples, g_warpCounter0, sizeof(int), 0);
+    numberOfSamples += newSamples;
+
+    // Number of nodes
+    int newInteriors;
+    cudaMemcpyFromSymbol(&newInteriors, g_warpCounter1, sizeof(int), 0);
+    numberOfNodes += 2 * newInteriors;
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1174,67 +1189,7 @@ void KDTree::Split(void) {
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
         *log << "SPLIT TIME\n" << time << std::endl;
-    }
-
-    // Number of samples
-    cudaMemcpyFromSymbol(&newSamples, g_warpCounter0, sizeof(int), 0);
-    numberOfSamples += newSamples;
-
-}
-
-void KDTree::PrepareLeafIndices(void) {
-
-    // Reset atomic counter
-    const int zero = 0;
-    cudaMemcpyToSymbol(g_warpCounter0, &zero, sizeof(int));
-    cudaMemcpyToSymbol(g_warpCounter1, &zero, sizeof(int));
-
-    // Grid and block size
-    int minGridSize, blockSize;
-    cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-        prepareLeafIndicesKernel, 0, 0);
-    int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
-
-    // Timer
-    cudaEvent_t start, stop;
-    if (logStats) {
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start, 0);
-    }
-
-    // Launch
-    prepareLeafIndicesKernel<<<gridSize, blockSize>>>(
-        GetNumberOfLeaves(),
-        leafIndices[swapBuffers].Data(),
-        leafIndices[!swapBuffers].Data(),
-        nodes.Data()
-     );
-
-    // Elapsed time and cleanup
-    if (logStats) {
-        float time;
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time, start, stop);
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-        *log << "PREPARE LEAF INDICES TIME\n" << time << std::endl;
         *log << "SAMPLES\n" << newSamples << std::endl;
-    }
-
-    // Number of nodes
-    int newInteriors;
-    cudaMemcpyFromSymbol(&newInteriors, g_warpCounter0, sizeof(int), 0);
-
-    // Number of nodes
-    int oldNumberOfLeaves = GetNumberOfLeaves();
-    numberOfNodes += 2 * newInteriors;
-
-    // Check counts
-    if (oldNumberOfLeaves + newInteriors != GetNumberOfLeaves()) {
-        std::cout << "Number of leaves is not consistent! " << oldNumberOfLeaves
-            + newInteriors << " != " << GetNumberOfLeaves() << std::endl;
     }
 
 }
@@ -1249,7 +1204,6 @@ void KDTree::SamplingPass(void) {
     ComputeErrors();
     AdaptiveSampling();
     Split();
-    PrepareLeafIndices();
     swapBuffers = !swapBuffers;
 }
 

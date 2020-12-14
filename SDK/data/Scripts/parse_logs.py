@@ -92,10 +92,6 @@ def run(spp, mdas):
         stats_file.write("SPLIT TIME\t" + str(split_time) + "\n")
         total_time += split_time
 
-        prepare_leaf_indices_time = sum(get_values("PREPARE LEAF INDICES TIME", log_filename))
-        stats_file.write("PREPARE LEAF INDICES TIME\t" + str(prepare_leaf_indices_time) + "\n")
-        total_time += prepare_leaf_indices_time
-
         update_indices_time = sum(get_values("UPDATE INDICES TIME", log_filename))
         stats_file.write("UPDATE INDICES TIME\t" + str(update_indices_time) + "\n")
         total_time += update_indices_time

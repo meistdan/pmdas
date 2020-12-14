@@ -418,7 +418,7 @@ void launchSubframe(
 void samplingPassMdas()
 {
     kdtree->SamplingPass();
-    kdtree->Validate();
+    //kdtree->Validate();
     params.sample_count = kdtree->GetNewSamples();
     params.sample_offset = kdtree->GetNumberOfSamples() - kdtree->GetNewSamples();
 }
@@ -429,7 +429,7 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
     float4* result_buffer_data = output_buffer.map();
     uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
     kdtree->UpdateIndices();
-    kdtree->Validate();
+    //kdtree->Validate();
     kdtree->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();
     output_buffer_bytes.unmap();
