@@ -462,7 +462,7 @@ __global__ void adaptiveSamplingKernel(
             outNodeIndices[leafIndex] = outNodeIndex;
 
             // Lock node
-            unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex);
+            unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex + 1);
             atomicMax(&nodeLocks[outNodeIndex], lock);
 
         }
@@ -476,9 +476,10 @@ __global__ void splitKernel(
     int numberOfNodes,
     int numberOfSamples,
     int maxLeafSize,
-    int* outNodeIndices,
+    int* leafIndices,
+    int* outNodeIndices,//
     unsigned long long* nodeLocks,
-    float* errors,
+    float* errors,//
     KDTree::Node* nodes,
     float4* nodesxy,
     float4* nodeszw,
@@ -497,17 +498,17 @@ __global__ void splitKernel(
 
     if (leafIndex < numberOfLeaves) {
 
-        // Error
-        float error = errors[leafIndex];
-
-        // Out node index
-        int outNodeIndex = outNodeIndices[leafIndex];
+        // Node index
+        int nodeIndex = leafIndices[leafIndex];
 
         // Lock node
-        unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex);
+        unsigned long long lock = nodeLocks[nodeIndex];
+
+        // Index of node that lock this node
+        int lockLeafIndex = (lock & 0xffffffff) - 1;
 
         // Node was successfuly locked
-        if (nodeLocks[outNodeIndex] == lock) {
+        if (lock != 0) {
             
             // Sample index
             int sampleIndex;
@@ -527,10 +528,10 @@ __global__ void splitKernel(
             }
 
             // Sample coordinates
-            sampleCoordinates[sampleIndex] = leafSamples[leafIndex];
+            sampleCoordinates[sampleIndex] = leafSamples[lockLeafIndex];
             
             // Node
-            KDTree::Node node = nodes[outNodeIndex];
+            KDTree::Node node = nodes[nodeIndex];
 
             // Sample indices
             int sampleCount = 0;
@@ -551,8 +552,8 @@ __global__ void splitKernel(
 
                 // Box
                 AABB box;
-                float4 nodexy = nodesxy[outNodeIndex];
-                float4 nodezw = nodeszw[outNodeIndex];
+                float4 nodexy = nodesxy[nodeIndex];
+                float4 nodezw = nodeszw[nodeIndex];
                 box.mn[0] = nodexy.x;
                 box.mn[1] = nodexy.z;
                 box.mn[2] = nodezw.x;
@@ -581,7 +582,7 @@ __global__ void splitKernel(
                 }
 
                 // Split position
-                int md = sampleCount / 2;
+                int md = sampleCount / 2;//
                 float splitPosition = 0.5f * (sampleCoordinates[sampleIndicesLoc[md - 1]][splitDimension] +
                     sampleCoordinates[sampleIndicesLoc[md]][splitDimension]);
                 node.position = splitPosition;
@@ -638,7 +639,7 @@ __global__ void splitKernel(
             }
 
             // Write node
-            nodes[outNodeIndex] = node;
+            nodes[nodeIndex] = node;
 
         }
 
@@ -1153,6 +1154,7 @@ void KDTree::Split(void) {
         numberOfNodes,
         numberOfSamples,
         maxLeafSize,
+        leafIndices[swapBuffers].Data(),
         outNodeIndices.Data(),
         nodeLocks.Data(),
         errors.Data(),
