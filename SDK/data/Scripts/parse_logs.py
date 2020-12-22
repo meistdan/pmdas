@@ -10,7 +10,7 @@ optix_exe = home_drive + "/optix/SDK/build/bin/Release/optixDepthOfField.exe"
 base_dir = home_drive + "/optix/SDK/data/" + scene_name + "/"
 
 # output dir
-out_dir = os.path.join(base_dir, "mdas")
+out_dir = os.path.join(base_dir, "mdas-8bit")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(base_dir)

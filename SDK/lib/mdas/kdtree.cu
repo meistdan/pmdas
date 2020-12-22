@@ -6,7 +6,6 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
-#include "aabb.h"
 #include "kdtree.h"
 
 namespace mdas {
@@ -21,8 +20,7 @@ __device__ int g_warpCounter1;
 __device__ float g_error;
 
 texture<float4, 1> t_nodes;
-texture<float4, 1> t_nodesxy;
-texture<float4, 1> t_nodeszw;
+texture<float4, 1> t_nodeBoxes;
 
 enum {
     MaxBlockHeight = 6,                     // Upper bound for blockDim.y
@@ -55,8 +53,7 @@ __global__ void uniformSamplingKernel(
     int* leafIndices,
     Point* sampleCoordinates,
     KDTree::Node* nodes,
-    float4* nodesxy,
-    float4* nodeszw,
+    AABB* nodeBoxes,
     unsigned int* seeds
 ) {
 
@@ -120,8 +117,12 @@ __global__ void uniformSamplingKernel(
 
         // Write node
         nodes[nodeIndex] = node;
-        nodesxy[nodeIndex] = make_float4(offset[0], offset[0] + extent[0], offset[1], offset[1] + extent[1]);
-        nodeszw[nodeIndex] = make_float4(offset[2], offset[2] + extent[2], offset[3], offset[3] + extent[3]);
+
+        // Write box
+        AABB box;
+        box.mn = offset;
+        box.mx = offset + extent;
+        nodeBoxes[nodeIndex] = box;
 
     }
 
@@ -218,10 +219,7 @@ __global__ void computeErrorsKernel(
     int numberOfLeaves,
     int* leafIndices,
     float* errors,
-    float3* sampleValues,
-    KDTree::Node* nodes,
-    float4* nodesxy,
-    float4* nodeszw
+    float3* sampleValues
 ) {
 
     // Leaf index.
@@ -243,13 +241,14 @@ __global__ void computeErrorsKernel(
 
             // Node
             int nodeIndex = leafIndices[leafIndex];
-            KDTree::Node node = nodes[nodeIndex];
+            float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
+            const KDTree::Node node = *(KDTree::Node*)&tmp;
 
             // Volume
-            float4 nodexy = nodesxy[nodeIndex];
-            float4 nodezw = nodeszw[nodeIndex];
-            float volume = (nodexy.y - nodexy.x) * (nodexy.w - nodexy.z)
-                * (nodezw.y - nodezw.x) * (nodezw.w - nodezw.z);
+            AABB box;
+            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
+            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
+            float volume = box.Volume();
 
             // Average value
             float3 avgValue = make_float3(0.0f);
@@ -312,9 +311,6 @@ __global__ void adaptiveSamplingKernel(
     int* leafIndices,
     float* errors,
     unsigned long long* nodeLocks,
-    KDTree::Node* nodes,
-    float4* nodesxy,
-    float4* nodeszw,
     Point* leafSamples,
     Point* sampleCoordinates,
     unsigned int* seeds
@@ -334,17 +330,10 @@ __global__ void adaptiveSamplingKernel(
             int nodeIndex = leafIndices[leafIndex];
 
             // Box
-            AABB box;
-            float4 nodexy = nodesxy[nodeIndex];
-            float4 nodezw = nodeszw[nodeIndex];
-            box.mn[0] = nodexy.x;
-            box.mn[1] = nodexy.z;
-            box.mn[2] = nodezw.x;
-            box.mn[3] = nodezw.z;
-            box.mx[0] = nodexy.y;
-            box.mx[1] = nodexy.w;
-            box.mx[2] = nodezw.y;
-            box.mx[3] = nodezw.w;
+            AABB box; 
+            float4 tmp;
+            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
+            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
 
             // Best candidate method
             int outNodeIndex = -1;
@@ -388,20 +377,22 @@ __global__ void adaptiveSamplingKernel(
 
                 // Nearest neighbor (simplified)
                 int curNodeIndex = 0;
-                KDTree::Node curNode = nodes[curNodeIndex];
-                while (!curNode.Leaf()) {
-                    if (candidate[~curNode.dimension] < curNode.position)
-                        curNodeIndex = curNode.left < 0 ? ~curNode.left : curNode.left;
+                tmp = tex1Dfetch(t_nodes, curNodeIndex);
+                KDTree::Node* curNode = (KDTree::Node*)&tmp;
+                while (!curNode->Leaf()) {
+                    if (candidate[~curNode->dimension] < curNode->position)
+                        curNodeIndex = curNode->left < 0 ? ~curNode->left : curNode->left;
                     else
-                        curNodeIndex = curNode.right < 0 ? ~curNode.right : curNode.right;
-                    curNode = nodes[curNodeIndex];
+                        curNodeIndex = curNode->right < 0 ? ~curNode->right : curNode->right;
+                    tmp = tex1Dfetch(t_nodes, curNodeIndex);
+                    curNode = (KDTree::Node*)&tmp;
                 }
 
                 // Test samples in the leaf
                 float minDistance = FLT_MAX;
                 for (int i = 0; i < 4; ++i) {
-                    if (curNode.indices[i] >= 0) {
-                        float distance = Point::Distance(candidate, sampleCoordinates[curNode.indices[i]]);
+                    if (curNode->indices[i] >= 0) {
+                        float distance = Point::Distance(candidate, sampleCoordinates[curNode->indices[i]]);
                         if (minDistance > distance) {
                             minDistance = distance;
                         }
@@ -413,6 +404,12 @@ __global__ void adaptiveSamplingKernel(
                     maxDistance = minDistance;
                     maxCandidate = candidate;
                     outNodeIndex = curNodeIndex;
+                }
+
+                // Distance to the nearest neighbor
+                if (maxDistance < minDistance) {
+                    maxDistance = minDistance;
+                    maxCandidate = candidate;
                 }
 
             }
@@ -436,12 +433,12 @@ __global__ void splitKernel(
     int numberOfNodes,
     int numberOfSamples,
     int maxLeafSize,
+    float errorThreshold,
     int* leafIndices,
     float* errors,
     unsigned long long* nodeLocks,
     KDTree::Node* nodes,
-    float4* nodesxy,
-    float4* nodeszw,
+    AABB* nodeBoxes,
     Point* leafSamples,
     Point* sampleCoordinates
 ) {
@@ -490,7 +487,8 @@ __global__ void splitKernel(
             sampleCoordinates[sampleIndex] = leafSamples[lockLeafIndex];
             
             // Node
-            KDTree::Node node = nodes[nodeIndex];
+            float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
+            KDTree::Node node = *(KDTree::Node*)&tmp;
 
             // Sample indices
             int sampleCount = 0;
@@ -511,16 +509,8 @@ __global__ void splitKernel(
 
                 // Box
                 AABB box;
-                float4 nodexy = nodesxy[nodeIndex];
-                float4 nodezw = nodeszw[nodeIndex];
-                box.mn[0] = nodexy.x;
-                box.mn[1] = nodexy.z;
-                box.mn[2] = nodezw.x;
-                box.mn[3] = nodezw.z;
-                box.mx[0] = nodexy.y;
-                box.mx[1] = nodexy.w;
-                box.mx[2] = nodezw.y;
-                box.mx[3] = nodezw.w;
+                tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
+                tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
 
                 // New sample index
                 sampleIndicesLoc[sampleCount++] = sampleIndex;
@@ -578,10 +568,9 @@ __global__ void splitKernel(
                 nodes[node.left] = left;
 
                 // Left box
-                AABB leftBox = box;
-                leftBox.mx[splitDimension] = splitPosition;
-                nodesxy[node.left] = make_float4(leftBox.mn[0], leftBox.mx[0], leftBox.mn[1], leftBox.mx[1]);
-                nodeszw[node.left] = make_float4(leftBox.mn[2], leftBox.mx[2], leftBox.mn[3], leftBox.mx[3]);
+                AABB childBox = box;
+                childBox.mx[splitDimension] = splitPosition;
+                nodeBoxes[node.left] = childBox;
 
                 // Right child
                 KDTree::Node right;
@@ -592,10 +581,9 @@ __global__ void splitKernel(
                 nodes[node.right] = right;
 
                 // Right box
-                AABB rightBox = box;
-                rightBox.mn[splitDimension] = splitPosition;
-                nodesxy[node.right] = make_float4(rightBox.mn[0], rightBox.mx[0], rightBox.mn[1], rightBox.mx[1]);
-                nodeszw[node.right] = make_float4(rightBox.mn[2], rightBox.mx[2], rightBox.mn[3], rightBox.mx[3]);
+                childBox = box;
+                childBox.mn[splitDimension] = splitPosition;
+                nodeBoxes[node.right] = childBox;
 
                 // New leaf indices and reset error
                 leafIndices[leafIndex] = node.left;
@@ -762,17 +750,18 @@ __global__ void integrateKernel(
                 sampleValue /= float(sampleCount);
 
                 // Leaf box
-                const float4 nxy = tex1Dfetch(t_nodesxy, ~leafAddr); // (c.lo.x, c.hi.x, c.lo.z, c.hi.z)
-                const float4 nzw = tex1Dfetch(t_nodeszw, ~leafAddr); // (c.lo.z, c.hi.z, c.lo.w, c.hi.w)
+                AABB box;
+                tmp = tex1Dfetch(t_nodeBoxes, 2 * (~leafAddr) + 0); box.mn = *(Point*)&tmp;
+                tmp = tex1Dfetch(t_nodeBoxes, 2 * (~leafAddr) + 1); box.mx = *(Point*)&tmp;
 
                 // Intersect the pixel volume with the leaf
-                const float clox = fmax(pMinX, nxy.x);
-                const float chix = fmin(pMaxX, nxy.y);
-                const float cloy = fmax(pMinY, nxy.z);
-                const float chiy = fmin(pMaxY, nxy.w);
+                const float clox = fmax(pMinX, box.mn[0]);
+                const float chix = fmin(pMaxX, box.mx[0]);
+                const float cloy = fmax(pMinY, box.mn[1]);
+                const float chiy = fmin(pMaxY, box.mx[1]);
 
                 // Volume
-                float volume = (chix - clox) * (chiy - cloy) * (nzw.y - nzw.x) * (nzw.w - nzw.z);
+                float volume = (chix - clox) * (chiy - cloy) * (box.mx[2] - box.mn[2]) * (box.mx[3] - box.mn[3]);
 
                 // Add contribution
                 value += sampleValue * volume / pixArea;
@@ -804,13 +793,13 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     maxLeafSize(4), 
     candidatesNum(1), 
     bitsPerDim(0), 
-    extraImgBits(7), 
+    extraImgBits(8), 
     numberOfSamples(0), 
     numberOfNodes(0), 
     maxSamples(maxSamples), 
     scaleX(1024.0f), 
     scaleY(512.0f), 
-    errorThreshold(0.1f),
+    errorThreshold(0.025f),
     logStats(false),
     log(log)
 {
@@ -818,8 +807,7 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     sampleCoordinates.Resize(maxSamples);
     sampleValues.Resize(maxSamples);
     nodes.Resize(2 * maxSamples - 1);
-    nodesxy.Resize(2 * maxSamples - 1);
-    nodeszw.Resize(2 * maxSamples - 1);
+    nodeBoxes.Resize(2 * maxSamples - 1);
     nodeLocks.Resize(2 * maxSamples - 1);
     leafSamples.Resize(maxSamples);
     leafIndices.Resize(maxSamples);
@@ -855,7 +843,7 @@ void KDTree::InitialSampling() {
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
-        errors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data(), seeds.Data());
+        errors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -942,6 +930,11 @@ void KDTree::UpdateIndices(void) {
 
 void KDTree::ComputeErrors(void) {
 
+    // Setup texture references
+    cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
+    CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
+    CUDA_CHECK(cudaBindTexture(0, &t_nodeBoxes, nodeBoxes.Data(), &desc, sizeof(AABB) * numberOfNodes));
+
     // Reset atomic counter
     const float zero = 0.0f;
     cudaMemcpyToSymbol(g_error, &zero, sizeof(float));
@@ -961,8 +954,8 @@ void KDTree::ComputeErrors(void) {
     }
 
     // Launch
-    computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), leafIndices.Data(), 
-        errors.Data(), sampleValues.Data(), nodes.Data(), nodesxy.Data(), nodeszw.Data());
+    computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), 
+        leafIndices.Data(), errors.Data(), sampleValues.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1007,9 +1000,6 @@ void KDTree::AdaptiveSampling(void) {
         leafIndices.Data(), 
         errors.Data(), 
         nodeLocks.Data(), 
-        nodes.Data(),
-        nodesxy.Data(), 
-        nodeszw.Data(), 
         leafSamples.Data(),
         sampleCoordinates.Data(),
         seeds.Data()
@@ -1055,12 +1045,12 @@ void KDTree::Split(void) {
         numberOfNodes,
         numberOfSamples,
         maxLeafSize,
+        errorThreshold,
         leafIndices.Data(),
         errors.Data(),
         nodeLocks.Data(),
         nodes.Data(),
-        nodesxy.Data(),
-        nodeszw.Data(),
+        nodeBoxes.Data(),
         leafSamples.Data(),
         sampleCoordinates.Data()
     );
@@ -1109,9 +1099,8 @@ void KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int heigh
 
     // Setup texture references
     cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-    CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(float4) * nodes.Size()));
-    CUDA_CHECK(cudaBindTexture(0, &t_nodesxy, nodesxy.Data(), &desc, sizeof(float4) * nodesxy.Size()));
-    CUDA_CHECK(cudaBindTexture(0, &t_nodeszw, nodeszw.Data(), &desc, sizeof(float4) * nodeszw.Size()));
+    CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
+    CUDA_CHECK(cudaBindTexture(0, &t_nodeBoxes, nodeBoxes.Data(), &desc, sizeof(AABB) * numberOfNodes));
 
     // Reset atomic counter
     const int zero = 0;
@@ -1180,15 +1169,7 @@ bool KDTree::Validate(void) {
         stack.pop();
 
         // Box
-        AABB box;
-        box.mn.data[0] = nodesxy[nodeIndex].x;
-        box.mn.data[1] = nodesxy[nodeIndex].z;
-        box.mn.data[2] = nodeszw[nodeIndex].x;
-        box.mn.data[3] = nodeszw[nodeIndex].z;
-        box.mx.data[0] = nodesxy[nodeIndex].y;
-        box.mx.data[1] = nodesxy[nodeIndex].w;
-        box.mx.data[2] = nodeszw[nodeIndex].y;
-        box.mx.data[3] = nodeszw[nodeIndex].w;
+        AABB box = nodeBoxes[nodeIndex];
 
         // Leaf
         if (nodes[nodeIndex].Leaf()) {
@@ -1252,15 +1233,7 @@ bool KDTree::Validate(void) {
                     int nodeIndex = leafIndices[k];
                     KDTree::Node curNode = nodes[nodeIndex];
                     if (curNode.indices[j] == i) {
-                        AABB box;
-                        box.mn.data[0] = nodesxy[nodeIndex].x;
-                        box.mn.data[1] = nodesxy[nodeIndex].z;
-                        box.mn.data[2] = nodeszw[nodeIndex].x;
-                        box.mn.data[3] = nodeszw[nodeIndex].z;
-                        box.mx.data[0] = nodesxy[nodeIndex].y;
-                        box.mx.data[1] = nodesxy[nodeIndex].w;
-                        box.mx.data[2] = nodeszw[nodeIndex].y;
-                        box.mx.data[3] = nodeszw[nodeIndex].w;
+                        AABB box = nodeBoxes[nodeIndex];
                         std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
                         std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
                         std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
@@ -1307,15 +1280,7 @@ bool KDTree::Validate(void) {
                     KDTree::Node curNode = nodes[nodeIndex];
                     if (curNode.indices[j] == i) {
                         contains = true;
-                        AABB box;
-                        box.mn.data[0] = nodesxy[nodeIndex].x;
-                        box.mn.data[1] = nodesxy[nodeIndex].z;
-                        box.mn.data[2] = nodeszw[nodeIndex].x;
-                        box.mn.data[3] = nodeszw[nodeIndex].z;
-                        box.mx.data[0] = nodesxy[nodeIndex].y;
-                        box.mx.data[1] = nodesxy[nodeIndex].w;
-                        box.mx.data[2] = nodeszw[nodeIndex].y;
-                        box.mx.data[3] = nodeszw[nodeIndex].w;
+                        AABB box = nodeBoxes[nodeIndex];
                         std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
                         std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
                         std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;

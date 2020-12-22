@@ -2,7 +2,7 @@
 #define _KDTREE_H_
 
 #include "buffer.h"
-#include "point.h"
+#include "aabb.h"
 #include <fstream>
 
 namespace mdas {
@@ -85,8 +85,7 @@ private:
     Buffer<float3> sampleValues;
 
     Buffer<Node> nodes;
-    Buffer<float4> nodesxy;
-    Buffer<float4> nodeszw;
+    Buffer<AABB> nodeBoxes;
     Buffer<unsigned long long> nodeLocks;
 
     Buffer<Point> leafSamples;
