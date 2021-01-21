@@ -9,11 +9,12 @@ optix_exe = home_drive + "/optix/SDK/build/bin/Release/optixDepthOfField.exe"
 base_dir = home_drive + "/optix/SDK/data/" + scene_name + "/"
 
 # output dir
-out_dir = os.path.join(base_dir, "mdas-8bit")
+out_dir = os.path.join(base_dir, "mdas-error-per-node")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(base_dir)
 
+ref_enabled = False
 ref_spp = 1024
 #spp = [0.25, 0.5, 1, 2, 4]
 spp = [4]
@@ -55,7 +56,8 @@ def run(spp, mdas, ref):
 
 
 # reference
-#run(ref_spp, False, True)
+if ref_enabled:
+    run(ref_spp, False, True)
 
 for s in spp:
     run(s, True, False)
