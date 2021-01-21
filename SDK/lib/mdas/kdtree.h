@@ -87,12 +87,12 @@ private:
 
     Buffer<Node> nodes;
     Buffer<AABB> nodeBoxes;
-    Buffer<unsigned long long> nodeLocks;
+    Buffer<float> nodeErrors;
 
     Buffer<Point> leafSamples;
     Buffer<int> leafIndices;
     Buffer<float> errors;
-    Buffer<float> errors2;
+    
     Buffer<unsigned int> seeds;
 
 };

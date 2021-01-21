@@ -10,8 +10,6 @@
 
 namespace mdas {
 
-#define BOX_SAMPLING 1
-
 #define STACK_SIZE              64          // Size of the traversal stack in local memory.
 #define DYNAMIC_FETCH_THRESHOLD 20          // If fewer than this active, fetch new rays
 
@@ -51,7 +49,7 @@ __global__ void uniformSamplingKernel(
     int extraImgBits,
     float scaleX,
     float scaleY,
-    float* errors,
+    float* nodeErrors,
     int* leafIndices,
     Point* sampleCoordinates,
     KDTree::Node* nodes,
@@ -115,7 +113,7 @@ __global__ void uniformSamplingKernel(
         // Node index and error
         int nodeIndex = leafIndex + numberOfLeaves - 1;
         leafIndices[leafIndex] = nodeIndex;
-        errors[nodeIndex] = -1.0f;
+        nodeErrors[nodeIndex] = -1.0f;
 
         // Write node
         nodes[nodeIndex] = node;
@@ -220,7 +218,7 @@ __global__ void updateIndicesKernel(
 __global__ void computeErrorsKernel(
     int numberOfLeaves,
     int* leafIndices,
-    float* errors,
+    float* nodeErrors,
     float3* sampleValues
 ) {
 
@@ -239,7 +237,7 @@ __global__ void computeErrorsKernel(
         int nodeIndex = leafIndices[leafIndex];
 
         // Error
-        error = errors[nodeIndex];
+        error = nodeErrors[nodeIndex];
 
         // Only for new nodes
         if (error < 0.0f) {
@@ -285,7 +283,7 @@ __global__ void computeErrorsKernel(
             error *= volume;
 
             // Write error
-            errors[nodeIndex] = error;
+            nodeErrors[nodeIndex] = error;
 
         }
         
@@ -308,12 +306,14 @@ __global__ void computeErrorsKernel(
 __global__ void propagateErrorsKernel(
     int numberOfLeaves,
     int* leafIndices,
-    float* errors,
-    float* errors2
+    float* nodeErrors,
+    float* errors
 ) {
 
     // Leaf index.
     const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (leafIndex == 0) printf("%f\n", g_error);
 
     // Stack
     int stack[STACK_SIZE];
@@ -325,7 +325,7 @@ __global__ void propagateErrorsKernel(
         int nodeIndex = leafIndices[leafIndex];
 
         // Error
-        float error = errors[nodeIndex];
+        float error = nodeErrors[nodeIndex];
 
         // Box
         AABB box;
@@ -352,7 +352,7 @@ __global__ void propagateErrorsKernel(
             if (node.Leaf()) {
 
                 // Update error
-                error = max(error, errors[curNodeIndex]);
+                error = max(error, nodeErrors[curNodeIndex]);
 
                 // Pop
                 curNodeIndex = *stackPtr;
@@ -388,7 +388,7 @@ __global__ void propagateErrorsKernel(
         }
         
         // Save error
-        errors2[nodeIndex] = error;
+        errors[leafIndex] = error;
 
     }
 }
@@ -402,128 +402,6 @@ __global__ void adaptiveSamplingKernel(
     float scaleY,
     int* leafIndices,
     float* errors,
-    unsigned long long* nodeLocks,
-    Point* leafSamples,
-    Point* sampleCoordinates,
-    unsigned int* seeds
-) {
-
-    // Leaf index.
-    const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
-    
-    if (leafIndex < numberOfLeaves) {
-
-        // Node index
-        int nodeIndex = leafIndices[leafIndex];
-
-        // Error
-        float error = errors[nodeIndex];
-
-        if (error >= errorThreshold * g_error) {
-
-            // Box
-            AABB box; 
-            float4 tmp;
-            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
-            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
-
-            // Best candidate method
-            int outNodeIndex = -1;
-            float maxDistance = -1.0;
-            Point maxCandidate;
-            Point center = box.Center();
-            unsigned int seed = seeds[leafIndex];
-            if (seed == 0) seed = tea<4>(leafIndex, 0);
-            for (int j = 0; j < candidatesNum; ++j) {
-
-                // Generate candidate
-                Point candidate;
-
-                while (true) {
-
-                    // Sample point bounding sphere
-                    Point direction;
-                    do {
-                        Point r;
-                        for (int i = 0; i < Point::DIM; ++i) 
-                            r.data[i] = rnd(seed);
-                        direction = 2.0f * r - 1.0f;
-                    } while (Point::Norm(direction) > 1.0f);
-                    const float R = 0.55f;
-                    float radius = R * Point::Distance(box.mx, box.mn);
-                    candidate = center + radius * direction;
-
-                    // Check extent
-                    bool valid = true;
-                    for (int i = 2; i < Point::DIM; ++i) {
-                        if (candidate[i] < 0.0f || candidate[i] >= 1.0f) {
-                            valid = false;
-                            break;
-                        }
-                    }
-                    if (candidate[0] < 0.0f || candidate[0] >= scaleX) valid = false;
-                    if (candidate[1] < 0.0f || candidate[1] >= scaleY) valid = false;
-                    if (valid) break;
-
-                }
-
-                // Nearest neighbor (simplified)
-                int curNodeIndex = 0;
-                tmp = tex1Dfetch(t_nodes, curNodeIndex);
-                KDTree::Node* curNode = (KDTree::Node*)&tmp;
-                while (!curNode->Leaf()) {
-                    if (candidate[~curNode->dimension] < curNode->position)
-                        curNodeIndex = curNode->left < 0 ? ~curNode->left : curNode->left;
-                    else
-                        curNodeIndex = curNode->right < 0 ? ~curNode->right : curNode->right;
-                    tmp = tex1Dfetch(t_nodes, curNodeIndex);
-                    curNode = (KDTree::Node*)&tmp;
-                }
-
-                // Test samples in the leaf
-                float minDistance = FLT_MAX;
-                for (int i = 0; i < 4; ++i) {
-                    if (curNode->indices[i] >= 0) {
-                        float distance = Point::Distance(candidate, sampleCoordinates[curNode->indices[i]]);
-                        if (minDistance > distance) {
-                            minDistance = distance;
-                        }
-                    }
-                }
-
-                // Distance to the nearest neighbor
-                if (maxDistance < minDistance) {
-                    maxDistance = minDistance;
-                    maxCandidate = candidate;
-                    outNodeIndex = curNodeIndex;
-                }
-
-            }
-            seeds[leafIndex] = seed;
-
-            // Sample coordinates and node index
-            leafSamples[leafIndex] = maxCandidate;
-
-            // Lock node
-            unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex + 1);
-            atomicMax(&nodeLocks[outNodeIndex], lock);
-
-        }
-
-    }
-
-}
-
-__global__ void adaptiveSamplingBoxKernel(
-    int numberOfLeaves,
-    int numberOfSamples,
-    int candidatesNum,
-    float errorThreshold,
-    float scaleX,
-    float scaleY,
-    int* leafIndices,
-    float* errors,
-    unsigned long long* nodeLocks,
     Point* leafSamples,
     Point* sampleCoordinates,
     unsigned int* seeds
@@ -534,13 +412,13 @@ __global__ void adaptiveSamplingBoxKernel(
 
     if (leafIndex < numberOfLeaves) {
 
-        // Node index
-        int nodeIndex = leafIndices[leafIndex];
-
         // Error
-        float error = errors[nodeIndex];
+        float error = errors[leafIndex];
 
         if (error >= errorThreshold * g_error) {
+
+            // Node index
+            int nodeIndex = leafIndices[leafIndex];
 
             // Node
             float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
@@ -589,10 +467,6 @@ __global__ void adaptiveSamplingBoxKernel(
             // Sample coordinates and node index
             leafSamples[leafIndex] = maxCandidate;
 
-            // Lock node
-            unsigned long long lock = (unsigned long long(__float_as_int(error)) << 32ull) | unsigned long long(leafIndex + 1);
-            atomicMax(&nodeLocks[nodeIndex], lock);
-
         }
 
     }
@@ -607,7 +481,7 @@ __global__ void splitKernel(
     float errorThreshold,
     int* leafIndices,
     float* errors,
-    unsigned long long* nodeLocks,
+    float* nodeErrors,
     KDTree::Node* nodes,
     AABB* nodeBoxes,
     Point* leafSamples,
@@ -628,14 +502,10 @@ __global__ void splitKernel(
         // Node index
         int nodeIndex = leafIndices[leafIndex];
 
-        // Lock node
-        unsigned long long lock = nodeLocks[nodeIndex];
+        // Error
+        float error = errors[leafIndex];
 
-        // Index of node that lock this node
-        int lockLeafIndex = (lock & 0xffffffff) - 1;
-
-        // Node was successfuly locked
-        if (lock != 0) {
+        if (error >= errorThreshold * g_error) {
             
             // Sample index
             int sampleIndex;
@@ -655,7 +525,7 @@ __global__ void splitKernel(
             }
 
             // Sample coordinates
-            sampleCoordinates[sampleIndex] = leafSamples[lockLeafIndex];
+            sampleCoordinates[sampleIndex] = leafSamples[leafIndex];
             
             // Node
             float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
@@ -761,8 +631,8 @@ __global__ void splitKernel(
                 leafIndices[leafOffset] = node.right;
 
                 // Reset errors
-                errors[node.left] = -1.0f;
-                errors[node.right] = -1.0f;
+                nodeErrors[node.left] = -1.0f;
+                nodeErrors[node.right] = -1.0f;
 
             }
 
@@ -979,10 +849,8 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     sampleValues.Resize(maxSamples);
     nodes.Resize(2 * maxSamples - 1);
     nodeBoxes.Resize(2 * maxSamples - 1);
-    nodeLocks.Resize(2 * maxSamples - 1);
-    errors.Resize(2 * maxSamples - 1);
-    errors2.Resize(2 * maxSamples - 1);
-    errors2.Resize(2 * maxSamples - 1);
+    nodeErrors.Resize(2 * maxSamples - 1);
+    errors.Resize(maxSamples);
     leafSamples.Resize(maxSamples);
     leafIndices.Resize(maxSamples);
     if (log != nullptr) logStats = true;
@@ -1016,7 +884,7 @@ void KDTree::InitialSampling() {
 
     // Launch
     uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
-        errors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
+        nodeErrors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1128,7 +996,7 @@ void KDTree::ComputeErrors(void) {
 
     // Launch
     computeErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(), 
-        leafIndices.Data(), errors.Data(), sampleValues.Data());
+        leafIndices.Data(), nodeErrors.Data(), sampleValues.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1166,7 +1034,7 @@ void KDTree::PropagateErrors(void) {
 
     // Launch
     propagateErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(),
-        leafIndices.Data(), errors.Data(), errors2.Data());
+        leafIndices.Data(), nodeErrors.Data(), errors.Data());
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1183,17 +1051,9 @@ void KDTree::PropagateErrors(void) {
 
 void KDTree::AdaptiveSampling(void) {
 
-#if BOX_SAMPLING
-    PropagateErrors();
-#endif
-
-    // Reset locks
-    cudaMemset(nodeLocks.Data(), 0, sizeof(unsigned long long) * GetNumberOfNodes());
-
     // Grid and block size
     int minGridSize, blockSize;
-    cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-        BOX_SAMPLING ? adaptiveSamplingBoxKernel : adaptiveSamplingKernel, 0, 0);
+    cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, adaptiveSamplingKernel, 0, 0);
     int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
 
     // Timer
@@ -1205,23 +1065,7 @@ void KDTree::AdaptiveSampling(void) {
     }
 
     // Launch
-#if BOX_SAMPLING
-    adaptiveSamplingBoxKernel<<<gridSize, blockSize>>>(
-        GetNumberOfLeaves(),
-        numberOfSamples,
-        candidatesNum,
-        errorThreshold,
-        scaleX,
-        scaleY,
-        leafIndices.Data(),
-        errors2.Data(),
-        nodeLocks.Data(),
-        leafSamples.Data(),
-        sampleCoordinates.Data(),
-        seeds.Data()
-        );
-#else
-    adaptiveSamplingKernel << <gridSize, blockSize >> > (
+    adaptiveSamplingKernel<<<gridSize, blockSize>>>(
         GetNumberOfLeaves(),
         numberOfSamples,
         candidatesNum,
@@ -1230,12 +1074,10 @@ void KDTree::AdaptiveSampling(void) {
         scaleY,
         leafIndices.Data(),
         errors.Data(),
-        nodeLocks.Data(),
         leafSamples.Data(),
         sampleCoordinates.Data(),
         seeds.Data()
         );
-#endif
 
     // Elapsed time and cleanup
     if (logStats) {
@@ -1280,7 +1122,7 @@ void KDTree::Split(void) {
         errorThreshold,
         leafIndices.Data(),
         errors.Data(),
-        nodeLocks.Data(),
+        nodeErrors.Data(),
         nodes.Data(),
         nodeBoxes.Data(),
         leafSamples.Data(),
@@ -1317,6 +1159,7 @@ void KDTree::Build() {
 
 void KDTree::SamplingPass(void) {
     ComputeErrors();
+    PropagateErrors();
     AdaptiveSampling();
     Split();
 }
