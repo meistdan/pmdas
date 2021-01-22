@@ -77,7 +77,7 @@ sutil::Trackball  trackball;
 // Mouse state
 int32_t           mouse_button = -1;
 
-int32_t           max_samples = 10000000;
+int32_t           max_samples = 30000000;
 int32_t           number_of_lights = 32;
 float             samples_per_launch = 1;
 bool              mdas_on = false;
@@ -682,7 +682,8 @@ int main(int argc, char* argv[])
             if (mdas_on)
             {
                 int total_samples = static_cast<int>(samples_per_launch * width * height);
-                std::cout << "total samples " << total_samples << std::endl;
+                std::cout << "Total samples " << total_samples << std::endl;
+                std::cout << "Sampling..." << std::endl;
                 while (kdtree->GetNumberOfSamples() < std::min(total_samples, max_samples))
                 {
                     samplingPassMdas();
@@ -694,9 +695,11 @@ int main(int argc, char* argv[])
                     std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
                         ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
                 }
+                std::cout << "Integrating..." << std::endl;
                 integrateMdas(output_buffer, output_buffer_bytes);
 
                 // Sampling density
+                std::cout << "Exporting sampling density..." << std::endl;
                 sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
                 std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.exr";
                 sutil::ImageBuffer density_buffer;
@@ -709,6 +712,7 @@ int main(int argc, char* argv[])
             }
 
             // Denoising
+            std::cout << "Denoising..." << std::endl;
             initDenoising(scene);
             sutil::CUDAOutputBuffer<float4> output_denoised_buffer(output_buffer_type, width, height);
             start = std::chrono::steady_clock::now();
@@ -723,6 +727,7 @@ int main(int argc, char* argv[])
             denoised_buffer.data = output_denoised_buffer.getHostPointer();
             denoised_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
             sutil::saveImage(denoised_outfile.c_str(), denoised_buffer, false);
+            std::cout << "Done" << std::endl;
 
             log.close();
 

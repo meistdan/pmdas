@@ -39,9 +39,7 @@ public:
     void UpdateIndices(void);
 
     void ComputeErrors(void);
-    void PropagateErrors(void);
     void AdaptiveSampling(void);
-    void Split(void);
 
     void Build(void);
     void SamplingPass(void);
@@ -89,10 +87,7 @@ private:
     Buffer<AABB> nodeBoxes;
     Buffer<float> nodeErrors;
 
-    Buffer<Point> leafSamples;
     Buffer<int> leafIndices;
-    Buffer<float> errors;
-    
     Buffer<unsigned int> seeds;
 
 };

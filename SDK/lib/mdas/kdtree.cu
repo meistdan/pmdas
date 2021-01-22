@@ -305,17 +305,28 @@ __global__ void computeErrorsKernel(
 
 }
 
-__global__ void propagateErrorsKernel(
+__global__ void adaptiveSamplingKernel(
     int numberOfLeaves,
+    int numberOfNodes,
+    int numberOfSamples,
+    int maxLeafSize,
+    int candidatesNum,
+    float errorThreshold,
+    float scaleX,
+    float scaleY,
     int* leafIndices,
     float* nodeErrors,
-    float* errors
+    KDTree::Node* nodes,
+    AABB* nodeBoxes,
+    Point* sampleCoordinates,
+    unsigned int* seeds
 ) {
 
     // Leaf index.
     const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-    //if (leafIndex == 0) printf("%f\n", g_error);
+    // Warp thread index.
+    const int warpThreadIndex = threadIdx.x & 31;
 
     // Stack
     int stack[STACK_SIZE];
@@ -386,50 +397,14 @@ __global__ void propagateErrorsKernel(
                 }
 
             }
-            
+
         }
-        
-        // Save error
-        errors[leafIndex] = error;
-
-    }
-}
-
-__global__ void adaptiveSamplingKernel(
-    int numberOfLeaves,
-    int numberOfSamples,
-    int candidatesNum,
-    float errorThreshold,
-    float scaleX,
-    float scaleY,
-    int* leafIndices,
-    float* errors,
-    Point* leafSamples,
-    Point* sampleCoordinates,
-    unsigned int* seeds
-) {
-
-    // Leaf index.
-    const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (leafIndex < numberOfLeaves) {
-
-        // Error
-        float error = errors[leafIndex];
 
         if (error >= errorThreshold * g_error) {
 
-            // Node index
-            int nodeIndex = leafIndices[leafIndex];
-
             // Node
-            float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
+            tmp = tex1Dfetch(t_nodes, nodeIndex);
             KDTree::Node node = *(KDTree::Node*) & tmp;
-
-            // Box
-            AABB box;
-            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
-            tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
 
             // Best candidate method
             float maxDistance = -1.0;
@@ -466,49 +441,6 @@ __global__ void adaptiveSamplingKernel(
             }
             seeds[leafIndex] = seed;
 
-            // Sample coordinates and node index
-            leafSamples[leafIndex] = maxCandidate;
-
-        }
-
-    }
-
-}
-
-__global__ void splitKernel(
-    int numberOfLeaves,
-    int numberOfNodes,
-    int numberOfSamples,
-    int maxLeafSize,
-    float errorThreshold,
-    int* leafIndices,
-    float* errors,
-    float* nodeErrors,
-    KDTree::Node* nodes,
-    AABB* nodeBoxes,
-    Point* leafSamples,
-    Point* sampleCoordinates
-) {
-
-    // Leaf index.
-    const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    // Warp thread index.
-    const int warpThreadIndex = threadIdx.x & 31;
-
-    // Sample indices
-    int sampleIndicesLoc[5];
-
-    if (leafIndex < numberOfLeaves) {
-
-        // Node index
-        int nodeIndex = leafIndices[leafIndex];
-
-        // Error
-        float error = errors[leafIndex];
-
-        if (error >= errorThreshold * g_error) {
-            
             // Sample index
             int sampleIndex;
             {
@@ -527,17 +459,13 @@ __global__ void splitKernel(
             }
 
             // Sample coordinates
-            sampleCoordinates[sampleIndex] = leafSamples[leafIndex];
-            
-            // Node
-            float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
-            KDTree::Node node = *(KDTree::Node*)&tmp;
+            sampleCoordinates[sampleIndex] = maxCandidate;
 
             // Sample indices
             int sampleCount = 0;
             for (int i = 0; i < 4; ++i) {
                 if (node.indices[i] >= 0) {
-                    sampleIndicesLoc[i] = node.indices[i];
+                    stack[i] = node.indices[i];
                     sampleCount++;
                 }
             }
@@ -550,13 +478,8 @@ __global__ void splitKernel(
             // Leaf is full => Split
             else {
 
-                // Box
-                AABB box;
-                tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 0); box.mn = *(Point*)&tmp;
-                tmp = tex1Dfetch(t_nodeBoxes, 2 * nodeIndex + 1); box.mx = *(Point*)&tmp;
-
                 // New sample index
-                sampleIndicesLoc[sampleCount++] = sampleIndex;
+                stack[sampleCount++] = sampleIndex;
 
                 // Split dimension
                 int splitDimension = box.LargestAxis();
@@ -565,18 +488,18 @@ __global__ void splitKernel(
                 // Sort 
                 for (int i = 0; i < sampleCount - 1; i++) {
                     for (int j = 0; j < sampleCount - i - 1; j++) {
-                        int a = sampleIndicesLoc[j];
-                        int b = sampleIndicesLoc[j + 1];
+                        int a = stack[j];
+                        int b = stack[j + 1];
                         if (sampleCoordinates[a][splitDimension] > sampleCoordinates[b][splitDimension]) {
-                            swap(sampleIndicesLoc[j], sampleIndicesLoc[j + 1]);
+                            swap(stack[j], stack[j + 1]);
                         }
                     }
                 }
 
                 // Split position
-                int md = sampleCount / 2;//
-                float splitPosition = 0.5f * (sampleCoordinates[sampleIndicesLoc[md - 1]][splitDimension] +
-                    sampleCoordinates[sampleIndicesLoc[md]][splitDimension]);
+                int md = sampleCount >> 1;
+                float splitPosition = 0.5f * (sampleCoordinates[stack[md - 1]][splitDimension] +
+                    sampleCoordinates[stack[md]][splitDimension]);
                 node.position = splitPosition;
 
                 // Node offset
@@ -605,7 +528,7 @@ __global__ void splitKernel(
                 // Left child
                 KDTree::Node left;
                 for (int i = 0; i < 4; ++i) {
-                    if (i < md) left.indices[i] = sampleIndicesLoc[i];
+                    if (i < md) left.indices[i] = stack[i];
                     else left.indices[i] = ~Point::DIM;
                 }
                 nodes[node.left] = left;
@@ -618,7 +541,7 @@ __global__ void splitKernel(
                 // Right child
                 KDTree::Node right;
                 for (int i = 0; i < 4; ++i) {
-                    if (i < sampleCount - md) right.indices[i] = sampleIndicesLoc[md + i];
+                    if (i < sampleCount - md) right.indices[i] = stack[md + i];
                     else right.indices[i] = ~Point::DIM;
                 }
                 nodes[node.right] = right;
@@ -646,6 +569,7 @@ __global__ void splitKernel(
     }
 
 }
+
 __global__ void integrateKernel(
     int width,
     int height,
@@ -852,8 +776,6 @@ KDTree::KDTree(int maxSamples, std::ofstream* log) :
     nodes.Resize(2 * maxSamples - 1);
     nodeBoxes.Resize(2 * maxSamples - 1);
     nodeErrors.Resize(2 * maxSamples - 1);
-    errors.Resize(maxSamples);
-    leafSamples.Resize(maxSamples);
     leafIndices.Resize(maxSamples);
     if (log != nullptr) logStats = true;
     int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
@@ -1013,45 +935,13 @@ void KDTree::ComputeErrors(void) {
 
 }
 
-void KDTree::PropagateErrors(void) {
-
-    // Setup texture references
-    cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-    CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
-    CUDA_CHECK(cudaBindTexture(0, &t_nodeBoxes, nodeBoxes.Data(), &desc, sizeof(AABB) * numberOfNodes));
-
-    // Grid and block size
-    int minGridSize, blockSize;
-    cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-        propagateErrorsKernel, 0, 0);
-    int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
-
-    // Timer
-    cudaEvent_t start, stop;
-    if (logStats) {
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start, 0);
-    }
-
-    // Launch
-    propagateErrorsKernel<<<gridSize, blockSize>>>(GetNumberOfLeaves(),
-        leafIndices.Data(), nodeErrors.Data(), errors.Data());
-
-    // Elapsed time and cleanup
-    if (logStats) {
-        float time;
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time, start, stop);
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-        *log << "PROPAGATE ERRORS TIME\n" << time << std::endl;
-    }
-
-}
 
 void KDTree::AdaptiveSampling(void) {
+
+    // Reset atomic counter
+    const int zero = 0;
+    cudaMemcpyToSymbol(g_warpCounter0, &zero, sizeof(int));
+    cudaMemcpyToSymbol(g_warpCounter1, &zero, sizeof(int));
 
     // Grid and block size
     int minGridSize, blockSize;
@@ -1069,67 +959,20 @@ void KDTree::AdaptiveSampling(void) {
     // Launch
     adaptiveSamplingKernel<<<gridSize, blockSize>>>(
         GetNumberOfLeaves(),
+        numberOfNodes,
         numberOfSamples,
+        maxLeafSize,
         candidatesNum,
         errorThreshold,
         scaleX,
         scaleY,
         leafIndices.Data(),
-        errors.Data(),
-        leafSamples.Data(),
-        sampleCoordinates.Data(),
-        seeds.Data()
-        );
-
-    // Elapsed time and cleanup
-    if (logStats) {
-        float time;
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&time, start, stop);
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-        *log << "ADAPTIVE SAMPLING TIME\n" << time << std::endl;
-    }
-
-}
-
-void KDTree::Split(void) {
-
-    // Reset atomic counter
-    const int zero = 0;
-    cudaMemcpyToSymbol(g_warpCounter0, &zero, sizeof(int));
-    cudaMemcpyToSymbol(g_warpCounter1, &zero, sizeof(int));
-    
-    // Grid and block size
-    int minGridSize, blockSize;
-    cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-        splitKernel, 0, 0);
-    int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
-
-    // Timer
-    cudaEvent_t start, stop;
-    if (logStats) {
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start, 0);
-    }
-
-    // Launch
-    splitKernel<<<gridSize, blockSize>>>(
-        GetNumberOfLeaves(),
-        numberOfNodes,
-        numberOfSamples,
-        maxLeafSize,
-        errorThreshold,
-        leafIndices.Data(),
-        errors.Data(),
         nodeErrors.Data(),
         nodes.Data(),
         nodeBoxes.Data(),
-        leafSamples.Data(),
-        sampleCoordinates.Data()
-    );
+        sampleCoordinates.Data(),
+        seeds.Data()
+        );
 
     // Number of samples
     cudaMemcpyFromSymbol(&newSamples, g_warpCounter0, sizeof(int), 0);
@@ -1148,8 +991,8 @@ void KDTree::Split(void) {
         cudaEventElapsedTime(&time, start, stop);
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
-        *log << "SPLIT TIME\n" << time << std::endl;
         *log << "SAMPLES\n" << newSamples << std::endl;
+        *log << "ADAPTIVE SAMPLING TIME\n" << time << std::endl;
     }
 
 }
@@ -1161,9 +1004,7 @@ void KDTree::Build() {
 
 void KDTree::SamplingPass(void) {
     ComputeErrors();
-    PropagateErrors();
     AdaptiveSampling();
-    Split();
 }
 
 void KDTree::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
@@ -1214,6 +1055,10 @@ void KDTree::SamplingDensity(float4* pixels, int width, int height) {
     for (int i = 0; i < GetNumberOfSamples(); ++i) {
         int x = sampleCoordinates[i][0] / scaleX * width;
         int y = sampleCoordinates[i][1] / scaleY * height;
+        if (x >= width) std::cout << "X out of bounds " << x << std::endl;
+        if (y >= height) std::cout << "Y out of bounds " << y << std::endl;
+        x = std::min(x, width - 1);
+        y = std::min(y, height - 1);
         pixels[y * width + x] += make_float4(samplingDensity);
     }
     for (int i = 0; i < width * height; ++i)

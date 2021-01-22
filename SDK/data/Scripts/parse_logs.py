@@ -21,9 +21,8 @@ if os.path.exists(table_filename):
 width = 1920
 height = 1080
 
-testing_passes = 2
-# spp = [0.25, 0.5, 1, 2, 4]
-spp = [1]
+testing_passes = 5
+spp = [0.25, 0.5, 1, 2, 4]
 
 p = "%.3f"
 
@@ -66,9 +65,7 @@ def run(spp, mdas):
     initial_sampling_time = 0
     construct_time = 0
     compute_errors_time = 0
-    propagate_errors_time = 0
     adaptive_sampling_time = 0
-    split_time = 0
     update_indices_time = 0
     integrate_time = 0
     denoising_time = 0
@@ -93,13 +90,11 @@ def run(spp, mdas):
             total_samples += sum(get_values("TOTAL SAMPLES", log_filename))
         else:
             total_samples += width * height * spp
-        total_iterations += max(len(get_values("SAMPLES", log_filename)) - 2, 0)
+        total_iterations += max(len(get_values("ADAPTIVE SAMPLING TIME", log_filename)) - 2, 0)
         initial_sampling_time += sum(get_values("INITIAL SAMPLING TIME", log_filename))
         construct_time += sum(get_values("CONSTRUCT TIME", log_filename))
         compute_errors_time += sum(get_values("COMPUTE ERRORS TIME", log_filename))
-        propagate_errors_time += sum(get_values("PROPAGATE ERRORS TIME", log_filename))
         adaptive_sampling_time += sum(get_values("ADAPTIVE SAMPLING TIME", log_filename))
-        split_time += sum(get_values("SPLIT TIME", log_filename))
         update_indices_time += sum(get_values("UPDATE INDICES TIME", log_filename))
         integrate_time += sum(get_values("INTEGRATE TIME", log_filename))
         denoising_time += sum(get_values("DENOISING TIME", log_filename))
@@ -115,9 +110,7 @@ def run(spp, mdas):
     initial_sampling_time /= testing_passes
     construct_time /= testing_passes
     compute_errors_time /= testing_passes
-    propagate_errors_time /= testing_passes
     adaptive_sampling_time /= testing_passes
-    split_time /= testing_passes
     update_indices_time /= testing_passes
     integrate_time /= testing_passes
     denoising_time /= testing_passes
@@ -127,9 +120,7 @@ def run(spp, mdas):
     total_mdas_time += initial_sampling_time
     total_mdas_time += construct_time
     total_mdas_time += compute_errors_time
-    total_mdas_time += propagate_errors_time
     total_mdas_time += adaptive_sampling_time
-    total_mdas_time += split_time
     total_mdas_time += update_indices_time
     total_mdas_time += integrate_time
 
@@ -141,9 +132,7 @@ def run(spp, mdas):
     table_file.write(", " + str(p % initial_sampling_time))
     table_file.write(", " + str(p % construct_time))
     table_file.write(", " + str(p % compute_errors_time))
-    table_file.write(", " + str(p % propagate_errors_time))
     table_file.write(", " + str(p % adaptive_sampling_time))
-    table_file.write(", " + str(p % split_time))
     table_file.write(", " + str(p % update_indices_time))
     table_file.write(", " + str(p % integrate_time))
     table_file.write(", " + str(p % denoising_time))
@@ -164,9 +153,7 @@ table_file.write(", iterations")
 table_file.write(", initial sampling time")
 table_file.write(", construct time")
 table_file.write(", compute errors time")
-table_file.write(", propagate errors time")
 table_file.write(", adaptive sampling time")
-table_file.write(", split time")
 table_file.write(", update indices time")
 table_file.write(", integrate time")
 table_file.write(", denoising time")
@@ -187,6 +174,8 @@ ref_filename = os.path.join(out_dir, ref_test_name + ".exr")
 ref_image = read_image(ref_filename)
 
 for s in spp:
-    run(s, True)
     if s >= 1:
         run(s, False)
+
+for s in spp:
+    run(s, True)

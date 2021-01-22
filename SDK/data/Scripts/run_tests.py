@@ -12,7 +12,7 @@ if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(base_dir)
 
-testing_passes = 5
+testing_passes = 20
 ref_enabled = False
 ref_spp = 1024
 spp = [0.25, 0.5, 1, 2, 4]
