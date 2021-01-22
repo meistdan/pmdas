@@ -9,27 +9,18 @@ optix_exe = home_drive + "/optix/SDK/build/bin/Release/optixDepthOfField.exe"
 base_dir = home_drive + "/optix/SDK/data/" + scene_name + "/"
 
 # output dir
-out_dir = os.path.join(base_dir, "mdas-error-per-node")
+out_dir = os.path.join(base_dir, "mdas")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(base_dir)
 
+testing_passes = 5
 ref_enabled = False
 ref_spp = 1024
-#spp = [0.25, 0.5, 1, 2, 4]
-spp = [4]
+spp = [0.25, 0.5, 1, 2, 4]
 
 
-def read_image(filename):
-    img = cv2.imread(filename)
-    return img
-
-
-def mse(img0: np.array, img1 : np.array):
-    return (np.subtract(img0, img1) ** 2).mean()
-
-
-def run(spp, mdas, ref):
+def run(spp, testing_pass, mdas, ref):
     # test name
     test_name = scene_name
     if ref:
@@ -38,6 +29,7 @@ def run(spp, mdas, ref):
         if mdas:
             test_name += "-mdas"
         test_name += "-spp-" + str(spp)
+        test_name += "-pass-" + str(testing_pass)
 
     # scene file
     scene_dir = os.path.join(base_dir, "Exterior")
@@ -57,9 +49,10 @@ def run(spp, mdas, ref):
 
 # reference
 if ref_enabled:
-    run(ref_spp, False, True)
+    run(ref_spp, 0, False, True)
 
-for s in spp:
-    run(s, True, False)
-    # if s >= 1:
-    #     run(s, False, False)
+for t in range(testing_passes):
+    for s in spp:
+        run(s, t, True, False)
+        if s >= 1:
+            run(s, t, False, False)

@@ -275,12 +275,14 @@ __global__ void computeErrorsKernel(
             }
 
             // Error
+            error = 0.0f;
             if (avgValue.x != 0.0f) error += diffSum.x / avgValue.x;
             if (avgValue.y != 0.0f) error += diffSum.y / avgValue.y;
             if (avgValue.z != 0.0f) error += diffSum.z / avgValue.z;
             error /= float(sampleCount);
             error += 1.0e-5;
             error *= volume;
+
 
             // Write error
             nodeErrors[nodeIndex] = error;
@@ -313,7 +315,7 @@ __global__ void propagateErrorsKernel(
     // Leaf index.
     const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (leafIndex == 0) printf("%f\n", g_error);
+    //if (leafIndex == 0) printf("%f\n", g_error);
 
     // Stack
     int stack[STACK_SIZE];

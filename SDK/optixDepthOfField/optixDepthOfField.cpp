@@ -41,6 +41,7 @@
 #include <cuda/Light.h>
 
 #include <sutil/Camera.h>
+#include <sutil/Denoiser.h>
 #include <sutil/Trackball.h>
 #include <sutil/CUDAOutputBuffer.h>
 #include <sutil/Exception.h>
@@ -88,6 +89,9 @@ int32_t                 height = 1080;
 
 // MDAS
 mdas::KDTree* kdtree = nullptr;
+
+// Denoiser
+sutil::Denoiser denoiser;
 
 //------------------------------------------------------------------------------
 //
@@ -305,6 +309,12 @@ void initMdas(std::ofstream* log = nullptr)
 }
 
 
+void initDenoising(const sutil::Scene& scene)
+{
+    denoiser.init(scene.context(), width, height);
+}
+
+
 void handleCameraUpdate(whitted::LaunchParams& params)
 {
     if (!camera_changed)
@@ -328,7 +338,9 @@ void handleCameraUpdate(whitted::LaunchParams& params)
 }
 
 
-void handleResize(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes)
+void handleResize(
+    sutil::CUDAOutputBuffer<float4>& output_buffer,
+    sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes)
 {
     if (!resize_dirty)
         return;
@@ -442,6 +454,12 @@ void samplingDensityMdas(sutil::ImageBuffer& density_buffer)
 }
 
 
+void execDenoising(sutil::CUDAOutputBuffer<float4>& input_buffer, sutil::CUDAOutputBuffer<float4>& output_buffer)
+{
+    denoiser.exec(input_buffer, output_buffer);
+}
+
+
 void displaySubframe(
     sutil::CUDAOutputBuffer<uchar4>& output_buffer,
     sutil::GLDisplay& gl_display,
@@ -482,6 +500,7 @@ void cleanup()
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(params.lights.data)));
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
     if (kdtree != nullptr) delete kdtree;
+    denoiser.cleanup();
 }
 
 
@@ -563,6 +582,7 @@ int main(int argc, char* argv[])
 
     try
     {
+        sutil::Denoiser denoiser;
         sutil::Scene scene(mdas_on);
         sutil::loadScene(infile.c_str(), scene);
         scene.finalize();
@@ -676,6 +696,7 @@ int main(int argc, char* argv[])
                 }
                 integrateMdas(output_buffer, output_buffer_bytes);
 
+                // Sampling density
                 sutil::CUDAOutputBuffer<float4> output_density_buffer(output_buffer_type, width, height);
                 std::string density_outfile = outfile.substr(0, outfile.length() - 4) + "-density.exr";
                 sutil::ImageBuffer density_buffer;
@@ -686,6 +707,23 @@ int main(int argc, char* argv[])
                 samplingDensityMdas(density_buffer);
                 sutil::saveImage(density_outfile.c_str(), density_buffer, false);
             }
+
+            // Denoising
+            initDenoising(scene);
+            sutil::CUDAOutputBuffer<float4> output_denoised_buffer(output_buffer_type, width, height);
+            start = std::chrono::steady_clock::now();
+            execDenoising(output_buffer, output_denoised_buffer);
+            stop = std::chrono::steady_clock::now();
+            time = stop - start;
+            log << "DENOISING TIME\n" << time.count() << std::endl;
+            std::string denoised_outfile = outfile.substr(0, outfile.length() - 4) + "-denoised.exr";
+            sutil::ImageBuffer denoised_buffer;
+            denoised_buffer.width = output_denoised_buffer.width();
+            denoised_buffer.height = output_denoised_buffer.height();
+            denoised_buffer.data = output_denoised_buffer.getHostPointer();
+            denoised_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
+            sutil::saveImage(denoised_outfile.c_str(), denoised_buffer, false);
+
             log.close();
 
             sutil::ImageBuffer buffer;
@@ -695,7 +733,6 @@ int main(int argc, char* argv[])
             buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
 
             const std::string ext = outfile.substr(outfile.length() - 3);
-            //if (ext == "PPM" || ext == "ppm")
             if (ext == "EXR" || ext == "exr")
             {
                 buffer.data = output_buffer.getHostPointer();
