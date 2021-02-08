@@ -44,6 +44,7 @@
 #include <sutil/Denoiser.h>
 #include <sutil/Trackball.h>
 #include <sutil/CUDAOutputBuffer.h>
+#include <sutil/Environment.h>
 #include <sutil/Exception.h>
 #include <sutil/GLDisplay.h>
 #include <sutil/Matrix.h>
@@ -92,6 +93,48 @@ mdas::KDTree* kdtree = nullptr;
 
 // Denoiser
 sutil::Denoiser denoiser;
+
+//------------------------------------------------------------------------------
+//
+// Environment
+//
+//------------------------------------------------------------------------------
+
+class AppEnvironment : public Environment {
+
+protected:
+
+    void registerOptions(void) {
+
+        registerOption("Camera.position", OPT_VECTOR3);
+        registerOption("Camera.direction", OPT_VECTOR3);
+        registerOption("Camera.upVector", "0.0 1.0 0.0", OPT_VECTOR3);
+        registerOption("Camera.focalDistance", "0.0", OPT_FLOAT);
+        registerOption("Camera.lensRadius", "0.0", OPT_FLOAT);
+
+        registerOption("Film.filename", OPT_STRING);
+        registerOption("Film.width", "1024", OPT_INT);
+        registerOption("Film.height", "768", OPT_INT);
+
+        registerOption("Sampler.samples", "1", OPT_FLOAT);
+        registerOption("Sampler.mdas", "0", OPT_BOOL);
+
+        registerOption("Light.point", OPT_VECTOR3);
+
+        registerOption("Model.filename", OPT_STRING);
+        registerOption("Model.frame", OPT_FLOAT);
+        registerOption("Model.scale", OPT_VECTOR3);
+        registerOption("Model.translate", OPT_VECTOR3);
+        registerOption("Model.rotate", OPT_VECTOR4);
+    }
+
+public:
+    
+    AppEnvironment(void) {
+        registerOptions();
+    }
+
+};
 
 //------------------------------------------------------------------------------
 //
@@ -215,13 +258,7 @@ static void scrollCallback(GLFWwindow* window, double xscroll, double yscroll)
 void printUsageAndExit(const char* argv0)
 {
     std::cerr << "Usage  : " << argv0 << " [options]\n";
-    std::cerr << "Options: --file | -f <filename>      File for image output\n";
-    std::cerr << "         --dim=<width>x<height>      Set image dimensions\n";
-    std::cerr << "         --launch-samples | -s       Number of samples per pixel per launch\n";
-    std::cerr << "         --no-gl-interop             Disable GL interop for display\n";
-    std::cerr << "         --model <model.gltf>        Specify model to render (required)\n";
-    std::cerr << "         --lights | -l               Number of lights\n";
-    std::cerr << "         --mdas                      Enable/Disable MDAS\n";
+    std::cerr << "Options: --no-gl-interop             Disable GL interop for display\n";
     std::cerr << "         --help | -h                 Print this usage message\n";
     exit(0);
 }
@@ -253,23 +290,16 @@ void initLaunchParams(const sutil::Scene& scene) {
     lights[1].point.falloff = Light::Falloff::QUADRATIC;
 #else
     std::vector<Light> lights(number_of_lights);
-    std::mt19937 mt;
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    std::vector<float3> pointLights;
+    Environment::getInstance()->getVector3Values("Light.point", pointLights);
+    number_of_lights = pointLights.size() + 1;
     lights[0].type = Light::Type::AMBIENT;
     lights[0].ambient.color = make_float3(0.35f, 0.35f, 0.35f);
     for (int i = 1; i < number_of_lights; ++i) {
-        float u1 = dist(mt);
-        float u2 = dist(mt);
-        const float r = sqrtf(u1);
-        const float phi = 2.0f * M_PIf * u2;
-        float3 p;
-        p.x = r * cosf(phi);
-        p.y = r * sinf(phi);
-        p.z = sqrtf(fmaxf(0.0f, 1.0f - p.x * p.x - p.y * p.y));
         lights[i].type = Light::Type::POINT;
         lights[i].point.color = { 1.0f, 1.0f, 0.8f };
-        lights[i].point.intensity = 50.0f / number_of_lights;
-        lights[i].point.position = scene.aabb().center() + loffset * p;
+        lights[i].point.intensity = 10.0f / number_of_lights;
+        lights[i].point.position = pointLights[i - 1];
         lights[i].point.falloff = Light::Falloff::QUADRATIC;
     }
 #endif
@@ -482,10 +512,24 @@ void displaySubframe(
 void initCameraState(const sutil::Scene& scene)
 {
     camera = scene.camera();
+
+    float focalDistance, lensRadius;
+    float3 position, direction, upVector;
+    if (Environment::getInstance()->getVector3Value("Camera.position", position)) 
+        camera.setEye(position);
+    if (Environment::getInstance()->getVector3Value("Camera.direction", direction)) 
+        camera.setDirection(direction);
+    if (Environment::getInstance()->getVector3Value("Camera.upVector", upVector))
+        camera.setUp(upVector);
+    if (Environment::getInstance()->getFloatValue("Camera.focalDistance", focalDistance)) 
+        camera.setFocalDistance(focalDistance);
+    if (Environment::getInstance()->getFloatValue("Camera.lensRadius", lensRadius)) 
+        camera.setLensRadius(lensRadius);
+
     //camera.setFocalDistance(1.0f);
     //camera.setLensRadius(0.005f);
-    camera.setFocalDistance(20.0f);
-    camera.setLensRadius(0.3f);
+    //camera.setFocalDistance(20.0f);
+    //camera.setLensRadius(0.3f);
     camera_changed = true;
 
     trackball.setCamera(&camera);
@@ -501,6 +545,7 @@ void cleanup()
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
     if (kdtree != nullptr) delete kdtree;
     denoiser.cleanup();
+    Environment::deleteInstance();
 }
 
 
@@ -518,7 +563,7 @@ int main(int argc, char* argv[])
     // Parse command line options
     //
     std::string outfile;
-    std::string infile = sutil::sampleDataFilePath("WaterBottle/WaterBottle.gltf");
+    std::string infile;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -531,54 +576,27 @@ int main(int argc, char* argv[])
         {
             output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
         }
-        else if (arg == "--model")
-        {
-            if (i >= argc - 1)
-                printUsageAndExit(argv[0]);
-            infile = argv[++i];
-        }
-        else if (arg == "--file" || arg == "-f")
-        {
-            if (i >= argc - 1)
-                printUsageAndExit(argv[0]);
-            outfile = argv[++i];
-        }
-        else if (arg.substr(0, 6) == "--dim=")
-        {
-            const std::string dims_arg = arg.substr(6);
-            sutil::parseDimensions(dims_arg.c_str(), width, height);
-        }
-        else if (arg == "--launch-samples" || arg == "-s")
-        {
-            if (i >= argc - 1)
-                printUsageAndExit(argv[0]);
-            samples_per_launch = atof(argv[++i]);
-        }
-        else if (arg == "--lights" || arg == "-l")
-        {
-            if (i >= argc - 1)
-                printUsageAndExit(argv[0]);
-            number_of_lights = atoi(argv[++i]);
-        }
-        else if (arg == "--mdas")
-        {
-            if (i >= argc - 1)
-                printUsageAndExit(argv[0]);
-            mdas_on = static_cast<bool>(atoi(argv[++i]));
-        }
-        else
-        {
-            std::cerr << "Unknown option '" << argv[i] << "'\n";
-            printUsageAndExit(argv[0]);
-        }
     }
+
+    Environment* env = new AppEnvironment();
+    Environment::setInstance(env);
+    if (!env->parse(argc, argv))
+        std::cerr << "Parsing failed environment file!" << std::endl;
+
+    Environment::getInstance()->getStringValue("Film.filename", outfile);
+    Environment::getInstance()->getIntValue("Film.width", width);
+    Environment::getInstance()->getIntValue("Film.height", height);
+
+    Environment::getInstance()->getBoolValue("Sampler.mdas", mdas_on);
+    Environment::getInstance()->getFloatValue("Sampler.samples", samples_per_launch);
+
+    Environment::getInstance()->getStringValue("Model.filename", infile);
 
     if (infile.empty())
     {
-        std::cerr << "--model argument required" << std::endl;
+        std::cerr << "Input GLTF file required!" << std::endl;
         printUsageAndExit(argv[0]);
     }
-
 
     try
     {

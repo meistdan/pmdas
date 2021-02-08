@@ -695,10 +695,8 @@ sutil::Camera sutil::Scene::camera() const
     std::cerr << "Returning default camera" << std::endl;
     Camera cam;
     cam.setFovY( 45.0f );
-    //cam.setLookat( m_scene_aabb.center() );
-    //cam.setEye   ( m_scene_aabb.center() + make_float3( 0.0f, 0.0f, 1.5f*m_scene_aabb.maxExtent() ) );
-    cam.setEye(make_float3(-585.045f, 111.824f, -44.4497f));
-    cam.setDirection(make_float3(0.729207f, 0.261858f, 0.632208f));
+    cam.setLookat( m_scene_aabb.center() );
+    cam.setEye   ( m_scene_aabb.center() + make_float3( 0.0f, 0.0f, 1.5f*m_scene_aabb.maxExtent() ) );
     return cam;
 }
 

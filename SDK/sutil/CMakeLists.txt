@@ -42,6 +42,8 @@ set(sources
     Camera.h
     CUDAOutputBuffer.h
     Denoiser.h
+    Environment.h
+    Environment.cpp
     Exception.h
     GLDisplay.cpp
     GLDisplay.h

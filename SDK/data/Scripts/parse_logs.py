@@ -21,7 +21,7 @@ if os.path.exists(table_filename):
 width = 1920
 height = 1080
 
-testing_passes = 5
+testing_passes = 20
 spp = [0.25, 0.5, 1, 2, 4]
 
 p = "%.3f"
@@ -105,6 +105,9 @@ def run(spp, mdas):
         error += mse(ref_image, image)
         error_denoised += mse(ref_image, image_denoised)
 
+    error /= testing_passes
+    error_denoised /= testing_passes
+
     total_samples /= testing_passes
     total_iterations /= testing_passes
     initial_sampling_time /= testing_passes
@@ -139,8 +142,8 @@ def run(spp, mdas):
     table_file.write(", " + str(p % total_mdas_time))
     table_file.write(", " + str(p % trace_time))
     table_file.write(", " + str(p % total_time))
-    table_file.write(", " + str(p % total_time_denoising))
     table_file.write(", " + str(error))
+    table_file.write(", " + str(p % total_time_denoising))
     table_file.write(", " + str(error_denoised))
     table_file.write("\n")
     table_file.close()
@@ -160,8 +163,8 @@ table_file.write(", denoising time")
 table_file.write(", total mdas time")
 table_file.write(", trace time")
 table_file.write(", total time")
-table_file.write(", total time with denoising")
 table_file.write(", mse")
+table_file.write(", total time (denoised)")
 table_file.write(", mse (denoised)")
 table_file.write("\n")
 table_file.close()
