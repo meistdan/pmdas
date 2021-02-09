@@ -80,7 +80,7 @@ void context_log_cb( unsigned int level, const char* tag, const char* message, v
 }
 
 template <int COMPONENTS>
-BufferView bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene, 
+BufferView bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene,
     std::map<CUdeviceptr, CUdeviceptr>& addr_map, const int32_t accessor_idx )
 {
     if( accessor_idx == -1 )
@@ -106,14 +106,15 @@ BufferView bufferViewFromGLTF( const tinygltf::Model& model, Scene& scene,
     buffer_view.count          = static_cast<uint32_t>( gltf_accessor.count );
     buffer_view.elmt_byte_size = static_cast<uint16_t>( elmt_byte_size );
 
-    addr_map[buffer_view.data] = buffer_view.data + buffer_view.count * 
-        (buffer_view.byte_stride ? buffer_view.byte_stride : COMPONENTS * elmt_byte_size);
+    addr_map[buffer_view.data] = buffer_view.data + static_cast<size_t>(buffer_view.count) * 
+        static_cast<size_t>(buffer_view.byte_stride ? buffer_view.byte_stride : COMPONENTS * elmt_byte_size);
 
     return buffer_view;
 }
 
 void processGLTFNode(
         Scene& scene,
+        size_t material_offset,
         std::map<CUdeviceptr, CUdeviceptr>& addr_map,
         const tinygltf::Model& model,
         const tinygltf::Node& gltf_node,
@@ -200,8 +201,9 @@ void processGLTFNode(
 
             mesh->name = gltf_mesh.name;
             mesh->indices.push_back( bufferViewFromGLTF<1>( model, scene, addr_map, gltf_primitive.indices ) );
-            mesh->material_idx.push_back( gltf_primitive.material );
+            mesh->material_idx.push_back( gltf_primitive.material + material_offset );
             mesh->transform = node_xform;
+
             std::cerr << "\t\tNum triangles: " << mesh->indices.back().count / 3 << std::endl;
 
             assert( gltf_primitive.attributes.find( "POSITION" ) !=  gltf_primitive.attributes.end() );
@@ -252,7 +254,7 @@ void processGLTFNode(
     {
         for( int32_t child : gltf_node.children )
         {
-            processGLTFNode( scene, addr_map, model, model.nodes[child], node_xform );
+            processGLTFNode( scene, material_offset, addr_map, model, model.nodes[child], node_xform );
         }
     }
 
@@ -263,7 +265,11 @@ void processGLTFNode(
 
 void loadScene( const std::string& filename, Scene& scene )
 {
-    scene.cleanup();
+    //scene.cleanup();
+    size_t material_offset = scene.materials().size();
+    size_t sampler_offset = scene.samplers().size();
+    size_t buffer_offset = scene.buffers().size();
+    size_t mesh_offset = scene.meshes().size();
 
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -368,7 +374,7 @@ void loadScene( const std::string& filename, Scene& scene )
             if( base_color_it != gltf_material.values.end() )
             {
                 std::cerr << "\tFound base color tex: " << base_color_it->second.TextureIndex() << "\n";
-                mtl.base_color_tex = scene.getSampler( base_color_it->second.TextureIndex() );
+                mtl.base_color_tex = scene.getSampler( base_color_it->second.TextureIndex() + sampler_offset );
             }
             else
             {
@@ -407,7 +413,7 @@ void loadScene( const std::string& filename, Scene& scene )
             if( metallic_roughness_it != gltf_material.values.end() )
             {
                 std::cerr << "\tFound metallic roughness tex: " << metallic_roughness_it->second.TextureIndex() << "\n";
-                mtl.metallic_roughness_tex = scene.getSampler( metallic_roughness_it->second.TextureIndex() );
+                mtl.metallic_roughness_tex = scene.getSampler( metallic_roughness_it->second.TextureIndex() + sampler_offset );
             }
             else
             {
@@ -420,7 +426,7 @@ void loadScene( const std::string& filename, Scene& scene )
             if( normal_it != gltf_material.additionalValues.end() )
             {
                 std::cerr << "\tFound normal color tex: " << normal_it->second.TextureIndex() << "\n";
-                mtl.normal_tex = scene.getSampler( normal_it->second.TextureIndex() );
+                mtl.normal_tex = scene.getSampler( normal_it->second.TextureIndex() + sampler_offset );
             }
             else
             {
@@ -430,7 +436,7 @@ void loadScene( const std::string& filename, Scene& scene )
 
         scene.addMaterial( mtl );
     }
-
+    
     //
     // Process nodes
     //
@@ -446,17 +452,21 @@ void loadScene( const std::string& filename, Scene& scene )
             continue;
         auto& gltf_node = model.nodes[i];
 
-        processGLTFNode( scene, addr_map, model, gltf_node, Matrix4x4::identity() );
+        processGLTFNode( scene, material_offset, addr_map, model, gltf_node, Matrix4x4::identity() );
     }
 
     //
     // Unpack buffer with proper alignment
     //
-    scene.remapBuffers(addr_map, model);
+    scene.remapBuffers(addr_map, model, mesh_offset);
+
 }
 
 
-Scene::Scene( bool mdas ) : m_mdas(mdas) {}
+Scene::Scene( bool mdas ) : m_mdas(mdas) 
+{
+    cleanup();
+}
 
 
 Scene::~Scene( void )
@@ -602,6 +612,7 @@ void Scene::finalize()
 
 void sutil::Scene::cleanup()
 {
+
     // OptiX cleanup
     if( m_pipeline )
     {
@@ -707,17 +718,15 @@ sutil::Camera sutil::Scene::camera() const
 //
 //------------------------------------------------------------------------------
 
-void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model)
+void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model, size_t mesh_offset)
 {
     // Compute total size
     size_t total_size = 0;
-    size_t ts = 0;
     for (auto& addr : addr_map) 
     {
         size_t cur_size = static_cast<size_t>(addr.second - addr.first);
         size_t cur_size_align = roundUp(cur_size, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
         total_size += cur_size_align;
-        ts += cur_size;
     }
 
     // Allocate buffer
@@ -742,7 +751,7 @@ void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf:
     }
 
     // Remap buffer views
-    for (size_t i = 0; i < m_meshes.size(); ++i)
+    for (size_t i = mesh_offset; i < m_meshes.size(); ++i)
     {
         auto& mesh = m_meshes[i];
         const size_t num_subMeshes = mesh->indices.size();
@@ -754,6 +763,7 @@ void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf:
             mesh->texcoords[j].data = addr_map[mesh->texcoords[j].data];
         }
     }
+
 }
 
 void Scene::createContext()
@@ -922,6 +932,8 @@ void Scene::buildMeshAccels( uint32_t triangle_input_flags )
     };
     std::multimap<size_t, GASInfo> gases;
     size_t totalTempOutputSize = 0;
+
+    //m_meshes.pop_back();
 
     for(size_t i=0; i<m_meshes.size(); ++i)
     {

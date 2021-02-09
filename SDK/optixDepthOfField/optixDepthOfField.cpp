@@ -109,6 +109,7 @@ protected:
         registerOption("Camera.position", OPT_VECTOR3);
         registerOption("Camera.direction", OPT_VECTOR3);
         registerOption("Camera.upVector", "0.0 1.0 0.0", OPT_VECTOR3);
+        registerOption("Camera.fovy", "45.0", OPT_FLOAT);
         registerOption("Camera.focalDistance", "0.0", OPT_FLOAT);
         registerOption("Camera.lensRadius", "0.0", OPT_FLOAT);
 
@@ -298,7 +299,7 @@ void initLaunchParams(const sutil::Scene& scene) {
     for (int i = 1; i < number_of_lights; ++i) {
         lights[i].type = Light::Type::POINT;
         lights[i].point.color = { 1.0f, 1.0f, 0.8f };
-        lights[i].point.intensity = 10.0f / number_of_lights;
+        lights[i].point.intensity = 50.0f / number_of_lights;
         lights[i].point.position = pointLights[i - 1];
         lights[i].point.falloff = Light::Falloff::QUADRATIC;
     }
@@ -513,7 +514,7 @@ void initCameraState(const sutil::Scene& scene)
 {
     camera = scene.camera();
 
-    float focalDistance, lensRadius;
+    float focalDistance, lensRadius, fovy;
     float3 position, direction, upVector;
     if (Environment::getInstance()->getVector3Value("Camera.position", position)) 
         camera.setEye(position);
@@ -521,7 +522,9 @@ void initCameraState(const sutil::Scene& scene)
         camera.setDirection(direction);
     if (Environment::getInstance()->getVector3Value("Camera.upVector", upVector))
         camera.setUp(upVector);
-    if (Environment::getInstance()->getFloatValue("Camera.focalDistance", focalDistance)) 
+    if (Environment::getInstance()->getFloatValue("Camera.fovy", fovy))
+        camera.setFovY(fovy);
+    if (Environment::getInstance()->getFloatValue("Camera.focalDistance", focalDistance))
         camera.setFocalDistance(focalDistance);
     if (Environment::getInstance()->getFloatValue("Camera.lensRadius", lensRadius)) 
         camera.setLensRadius(lensRadius);
@@ -563,7 +566,7 @@ int main(int argc, char* argv[])
     // Parse command line options
     //
     std::string outfile;
-    std::string infile;
+    std::vector<std::string> infiles;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -590,9 +593,9 @@ int main(int argc, char* argv[])
     Environment::getInstance()->getBoolValue("Sampler.mdas", mdas_on);
     Environment::getInstance()->getFloatValue("Sampler.samples", samples_per_launch);
 
-    Environment::getInstance()->getStringValue("Model.filename", infile);
+    Environment::getInstance()->getStringValues("Model.filename", infiles);
 
-    if (infile.empty())
+    if (infiles.empty())
     {
         std::cerr << "Input GLTF file required!" << std::endl;
         printUsageAndExit(argv[0]);
@@ -602,7 +605,8 @@ int main(int argc, char* argv[])
     {
         sutil::Denoiser denoiser;
         sutil::Scene scene(mdas_on);
-        sutil::loadScene(infile.c_str(), scene);
+        for (auto& infile : infiles)
+            sutil::loadScene(infile.c_str(), scene);
         scene.finalize();
 
         OPTIX_CHECK(optixInit()); // Need to initialize function table

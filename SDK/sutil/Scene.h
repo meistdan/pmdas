@@ -108,9 +108,11 @@ public:
     SUTILAPI sutil::Aabb                               aabb() const                 { return m_scene_aabb; }
     SUTILAPI OptixDeviceContext                        context() const              { return m_context;    }
     SUTILAPI const std::vector<MaterialData::Pbr>&     materials() const            { return m_materials;  }
+    SUTILAPI const std::vector<cudaTextureObject_t>&   samplers() const             { return m_samplers;   }
+    SUTILAPI const std::vector<CUdeviceptr>&           buffers() const              { return m_samplers;   }
     SUTILAPI const std::vector<std::shared_ptr<MeshGroup>>& meshes() const          { return m_meshes;     }
 
-    SUTILAPI void remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model);
+    SUTILAPI void remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model, size_t mesh_offset);
 
     SUTILAPI void createContext();
     SUTILAPI void buildMeshAccels( uint32_t triangle_input_flags = OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT );
