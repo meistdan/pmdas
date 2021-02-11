@@ -118,6 +118,38 @@ static __forceinline__ __device__ void traceRadiance(
 
 
 
+static __forceinline__ __device__ void traceRadiance(
+    OptixTraversableHandle      handle,
+    float3                      ray_origin,
+    float3                      ray_direction,
+    float                       tmin,
+    float                       tmax,
+    float                       time,
+    whitted::PayloadRadiance* payload
+)
+{
+    unsigned int u0 = 0, u1 = 0, u2 = 0, u3 = 0;
+    optixTrace(
+        handle,
+        ray_origin, ray_direction,
+        tmin,
+        tmax,
+        time,                     // rayTime
+        OptixVisibilityMask(1),
+        OPTIX_RAY_FLAG_NONE,
+        whitted::RAY_TYPE_RADIANCE,        // SBT offset
+        whitted::RAY_TYPE_COUNT,           // SBT stride
+        whitted::RAY_TYPE_RADIANCE,        // missSBTIndex
+        u0, u1, u2, u3);
+
+    payload->result.x = __int_as_float(u0);
+    payload->result.y = __int_as_float(u1);
+    payload->result.z = __int_as_float(u2);
+    payload->depth = u3;
+}
+
+
+
 static __forceinline__ __device__ bool traceOcclusion(
         OptixTraversableHandle handle,
         float3                 ray_origin,
@@ -140,6 +172,33 @@ static __forceinline__ __device__ bool traceOcclusion(
             whitted::RAY_TYPE_COUNT,          // SBT stride
             whitted::RAY_TYPE_OCCLUSION,      // missSBTIndex
             occluded );
+    return occluded;
+}
+
+
+static __forceinline__ __device__ bool traceOcclusion(
+    OptixTraversableHandle handle,
+    float3                 ray_origin,
+    float3                 ray_direction,
+    float                  tmin,
+    float                  tmax,
+    float                  time
+)
+{
+    unsigned int occluded = 0u;
+    optixTrace(
+        handle,
+        ray_origin,
+        ray_direction,
+        tmin,
+        tmax,
+        time,                    // rayTime
+        OptixVisibilityMask(1),
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+        whitted::RAY_TYPE_OCCLUSION,      // SBT offset
+        whitted::RAY_TYPE_COUNT,          // SBT stride
+        whitted::RAY_TYPE_OCCLUSION,      // missSBTIndex
+        occluded);
     return occluded;
 }
 

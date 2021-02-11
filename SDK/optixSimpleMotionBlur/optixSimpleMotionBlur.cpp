@@ -442,8 +442,8 @@ void buildGAS( SimpleMotionBlurState& state )
 
         uint32_t triangle_input_flag = OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT;
         CUdeviceptr vertex_buffer_ptrs[ NUM_KEYS ];
-        for( int i = 0; i < NUM_KEYS; ++i )
-            vertex_buffer_ptrs[i] = d_tri_vertices + i*NUM_VERTS*sizeof(Vertex);
+        for (int i = 0; i < NUM_KEYS; ++i)
+            vertex_buffer_ptrs[i] = d_tri_vertices + i * NUM_VERTS * sizeof(Vertex);
 
 
         OptixBuildInput triangle_input = {};
@@ -605,6 +605,7 @@ void buildGAS( SimpleMotionBlurState& state )
         }
 
         {
+            //state.d_sphere_motion_transform = state.sphere_gas_handle;
             const float motion_matrix_keys[2][12] =
             {
                 {
@@ -690,10 +691,10 @@ void buildInstanceAccel( SimpleMotionBlurState& state )
     accel_options.buildFlags              = OPTIX_BUILD_FLAG_NONE;
     accel_options.operation               = OPTIX_BUILD_OPERATION_BUILD;
 
-    accel_options.motionOptions.numKeys   = 2;
-    accel_options.motionOptions.timeBegin = 0.0f;
-    accel_options.motionOptions.timeEnd   = 1.0f;
-    accel_options.motionOptions.flags     = OPTIX_MOTION_FLAG_NONE;
+    //accel_options.motionOptions.numKeys   = 2;
+    //accel_options.motionOptions.timeBegin = 0.0f;
+    //accel_options.motionOptions.timeEnd   = 1.0f;
+    //accel_options.motionOptions.flags     = OPTIX_MOTION_FLAG_NONE;
 
     OptixAccelBufferSizes ias_buffer_sizes;
     OPTIX_CHECK( optixAccelComputeMemoryUsage(

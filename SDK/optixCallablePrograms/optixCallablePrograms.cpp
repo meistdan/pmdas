@@ -249,7 +249,7 @@ void initLaunchParams( CallableProgramsState& state )
     lights[1].point.color     = make_float3( 1.0f, 1.0f, 1.0f );
     lights[1].point.intensity = 1.0f;
     lights[1].point.position  = make_float3( 10.0f, 10.0f, -10.0f );
-    lights[1].point.falloff   = Light::Falloff::QUADRATIC;
+    //lights[1].point.falloff   = Light::Falloff::QUADRATIC;
 
     state.params.lights.count = static_cast<unsigned int>( lights.size() );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &state.params.lights.data ), lights.size() * sizeof( Light ) ) );

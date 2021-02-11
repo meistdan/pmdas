@@ -204,12 +204,12 @@ void initLaunchParams( const sutil::Scene& scene ) {
     lights[0].point.color     = {1.0f, 1.0f, 0.8f};
     lights[0].point.intensity = 5.0f;
     lights[0].point.position  = scene.aabb().center() + make_float3( loffset );
-    lights[0].point.falloff   = Light::Falloff::QUADRATIC;
+    //lights[0].point.falloff   = Light::Falloff::QUADRATIC;
     lights[1].type            = Light::Type::POINT;
     lights[1].point.color     = {0.8f, 0.8f, 1.0f};
     lights[1].point.intensity = 3.0f;
     lights[1].point.position  = scene.aabb().center() + make_float3( -loffset, 0.5f * loffset, -0.5f * loffset );
-    lights[1].point.falloff   = Light::Falloff::QUADRATIC;
+    //lights[1].point.falloff   = Light::Falloff::QUADRATIC;
 
     params.lights.count  = static_cast<uint32_t>( lights.size() );
     CUDA_CHECK( cudaMalloc(

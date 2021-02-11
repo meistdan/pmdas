@@ -48,6 +48,22 @@ bool Environment::filterValue(const std::string& value, std::string& filteredVal
         filteredValue = std::to_string(val0) + " " + std::to_string(val1) + " " 
                       + std::to_string(val2) + " " + std::to_string(val3);
     }
+    else if (type == OPT_FRAME) {
+        Frame value;
+        ss >> value.scale.x;
+        ss >> value.scale.y;
+        ss >> value.scale.z;
+        ss >> value.translate.x;
+        ss >> value.translate.y;
+        ss >> value.translate.z;
+        ss >> value.rotate.w;
+        ss >> value.rotate.x;
+        ss >> value.rotate.y;
+        ss >> value.rotate.z;
+        filteredValue = std::to_string(value.scale.x) + " " + std::to_string(value.scale.y) + " " + std::to_string(value.scale.z) + " "
+            + std::to_string(value.translate.x) + " " + std::to_string(value.translate.y) + " " + std::to_string(value.translate.z) + " "
+            + std::to_string(value.rotate.w) + " " + std::to_string(value.rotate.x) + " " + std::to_string(value.rotate.y) + " " + std::to_string(value.rotate.z);
+    }
     else {
         filteredValue = value;
         if (value.empty()) valid = false;
@@ -211,6 +227,42 @@ bool Environment::getVector4Value(const std::string& name, float4& value) {
     }
 }
 
+bool Environment::getFrameValue(const std::string& name, Frame& value) {
+    Option opt;
+    if (!findOption(name, opt)) return false;
+    if (!opt.values.empty() && !opt.values.front().empty()) {
+        std::stringstream ss(opt.values.front());
+        ss >> value.scale.x;
+        ss >> value.scale.y;
+        ss >> value.scale.z;
+        ss >> value.translate.x;
+        ss >> value.translate.y;
+        ss >> value.translate.z;
+        ss >> value.rotate.w;
+        ss >> value.rotate.x;
+        ss >> value.rotate.y;
+        ss >> value.rotate.z;
+        return true;
+    }
+    else if (!opt.defaultValue.empty()) {
+        std::stringstream ss(opt.defaultValue);
+        ss >> value.scale.x;
+        ss >> value.scale.y;
+        ss >> value.scale.z;
+        ss >> value.translate.x;
+        ss >> value.translate.y;
+        ss >> value.translate.z;
+        ss >> value.rotate.w;
+        ss >> value.rotate.x;
+        ss >> value.rotate.y;
+        ss >> value.rotate.z;
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
 bool Environment::getStringValue(const std::string& name, std::string& value) {
     Option opt;
     if (!findOption(name, opt)) return false;
@@ -367,6 +419,50 @@ bool Environment::getVector4Values(const std::string& name, std::vector<float4>&
     }
 }
 
+bool Environment::getFrameValues(const std::string& name, std::vector<Frame>& values) {
+    Option opt;
+    if (!findOption(name, opt)) return false;
+    if (!opt.values.empty() && !opt.values.front().empty()) {
+        values.clear();
+        std::vector<std::string>::iterator i;
+        for (i = opt.values.begin(); i != opt.values.end(); ++i) {
+            Frame value;
+            std::stringstream ss(*i);
+            ss >> value.scale.x;
+            ss >> value.scale.y;
+            ss >> value.scale.z;
+            ss >> value.translate.x;
+            ss >> value.translate.y;
+            ss >> value.translate.z;
+            ss >> value.rotate.w;
+            ss >> value.rotate.x;
+            ss >> value.rotate.y;
+            ss >> value.rotate.z;
+            values.push_back(value);
+        }
+        return true;
+    }
+    else if (!opt.defaultValue.empty()) {
+        Frame value;
+        std::stringstream ss(opt.defaultValue);
+        ss >> value.scale.x;
+        ss >> value.scale.y;
+        ss >> value.scale.z;
+        ss >> value.translate.x;
+        ss >> value.translate.y;
+        ss >> value.translate.z;
+        ss >> value.rotate.w;
+        ss >> value.rotate.x;
+        ss >> value.rotate.y;
+        ss >> value.rotate.z;
+        values.push_back(value);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
 bool Environment::getStringValues(const std::string& name, std::vector<std::string>& values) {
     Option opt;
     if (!findOption(name, opt)) return false;
@@ -464,6 +560,7 @@ bool Environment::readEnvFile(const std::string& filename) {
                 if (!found) {
                     std::cerr << "Unknown option '" <<
                         optionName << "' in environment file '" << filename << "' (line " << lineNumber << ")." << std::endl;
+                    std::cout << words[i-1] << " " << line << std::endl;
                     in.close();
                     return false;
                 }
@@ -535,6 +632,21 @@ bool Environment::readEnvFile(const std::string& filename) {
                             j->values.push_back(value);
                         }
                         i += 4;
+                        break;
+                    }
+
+                    case OPT_FRAME: {
+                        if (i + 10 >= words.size() || !filterValue(words[i + 1] + " " + words[i + 2] + " " + words[i + 3] + " " + 
+                            words[i + 4] + " " + words[i + 5] + " " + words[i + 6] + " " + words[i + 7] + " " + words[i + 8] + " " + words[i + 9] + " " + words[i + 10], value, OPT_FRAME)) {
+                            std::cerr << "Mismatch in vector variable " <<
+                                optionName << " in environment file '" << filename << "' (line " << lineNumber << ")." << std::endl;
+                            in.close();
+                            return false;
+                        }
+                        else {
+                            j->values.push_back(value);
+                        }
+                        i += 10;
                         break;
                     }
 

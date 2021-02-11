@@ -32,18 +32,11 @@ struct Light
 {
     Light() {}
 
-    enum class Falloff : int
-    {
-        NONE = 0,
-        LINEAR,
-        QUADRATIC
-    };
-
-
     enum class Type : int
     {
         POINT   = 0,
-        AMBIENT = 1
+        AMBIENT = 1,
+        DISTANT = 2
     };
 
     struct Point
@@ -51,9 +44,15 @@ struct Light
         float3   color      CONST_STATIC_INIT( { 1.0f, 1.0f, 1.0f } );
         float    intensity  CONST_STATIC_INIT( 1.0f                 );
         float3   position   CONST_STATIC_INIT( {}                   );
-        Falloff  falloff    CONST_STATIC_INIT( Falloff::QUADRATIC   );
     };
 
+    struct Distant
+    {
+        float3   color      CONST_STATIC_INIT({ 1.0f, 1.0f, 1.0f });
+        float    intensity  CONST_STATIC_INIT(1.0f);
+        float3   direction  CONST_STATIC_INIT({});
+        float    radius     CONST_STATIC_INIT(1.0e+5f);
+    };
 
     struct Ambient
     {
@@ -66,6 +65,7 @@ struct Light
     union
     {
         Point   point;
+        Distant distant;
         Ambient ambient;
     };
 };

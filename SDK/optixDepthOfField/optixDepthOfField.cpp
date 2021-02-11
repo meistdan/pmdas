@@ -79,7 +79,6 @@ sutil::Trackball  trackball;
 int32_t           mouse_button = -1;
 
 int32_t           max_samples = 30000000;
-int32_t           number_of_lights = 32;
 float             samples_per_launch = 1;
 bool              mdas_on = false;
 
@@ -121,12 +120,12 @@ protected:
         registerOption("Sampler.mdas", "0", OPT_BOOL);
 
         registerOption("Light.point", OPT_VECTOR3);
+        registerOption("Light.distant", OPT_VECTOR3);
+        registerOption("Light.color", OPT_VECTOR3);
 
         registerOption("Model.filename", OPT_STRING);
-        registerOption("Model.frame", OPT_FLOAT);
-        registerOption("Model.scale", OPT_VECTOR3);
-        registerOption("Model.translate", OPT_VECTOR3);
-        registerOption("Model.rotate", OPT_VECTOR4);
+        registerOption("Model.frameBegin", OPT_FRAME);
+        registerOption("Model.frameEnd", OPT_FRAME);
     }
 
 public:
@@ -239,6 +238,12 @@ static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, i
         camera_changed = true;
         std::cout << "Lens radius " << camera.lensRadius() << std::endl;
     }
+    else if (key == GLFW_KEY_K)
+    {
+        std::cout << "Eye " << camera.eye().x << " " << camera.eye().y << " " << camera.eye().z << std::endl;
+        std::cout << "Direction " << camera.direction().x << " " << camera.direction().y << " " << camera.direction().z << std::endl;
+        std::cout << "Up " << camera.up().x << " " << camera.up().y << " " << camera.up().z << std::endl;
+    }
 }
 
 
@@ -266,44 +271,65 @@ void printUsageAndExit(const char* argv0)
 
 
 void initLaunchParams(const sutil::Scene& scene) {
+
     CUDA_CHECK(cudaMalloc(
         reinterpret_cast<void**>(&params.accum_buffer),
         width * height * sizeof(float4)
     ));
     params.frame_buffer = nullptr; // Will be set when output buffer is mapped
-
     params.subframe_index = 0u;
 
-    const float loffset = scene.aabb().maxExtent();
-
-#if 0
-    // TODO: add light support to sutil::Scene
-    std::vector<Light> lights(2);
-    lights[0].type = Light::Type::POINT;
-    lights[0].point.color = { 1.0f, 1.0f, 0.8f };
-    lights[0].point.intensity = 5.0f;
-    lights[0].point.position = scene.aabb().center() + make_float3(loffset);
-    lights[0].point.falloff = Light::Falloff::QUADRATIC;
-    lights[1].type = Light::Type::POINT;
-    lights[1].point.color = { 0.8f, 0.8f, 1.0f };
-    lights[1].point.intensity = 3.0f;
-    lights[1].point.position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
-    lights[1].point.falloff = Light::Falloff::QUADRATIC;
-#else
-    std::vector<Light> lights(number_of_lights);
+    // Parse lights
+    std::vector<Light> lights;
     std::vector<float3> pointLights;
+    std::vector<float3> distantLights;
+    std::vector<float3> lightColors;
     Environment::getInstance()->getVector3Values("Light.point", pointLights);
-    number_of_lights = pointLights.size() + 1;
-    lights[0].type = Light::Type::AMBIENT;
-    lights[0].ambient.color = make_float3(0.35f, 0.35f, 0.35f);
-    for (int i = 1; i < number_of_lights; ++i) {
-        lights[i].type = Light::Type::POINT;
-        lights[i].point.color = { 1.0f, 1.0f, 0.8f };
-        lights[i].point.intensity = 50.0f / number_of_lights;
-        lights[i].point.position = pointLights[i - 1];
-        lights[i].point.falloff = Light::Falloff::QUADRATIC;
+    Environment::getInstance()->getVector3Values("Light.distant", distantLights);
+    Environment::getInstance()->getVector3Values("Light.color", lightColors);
+    
+    // Ambient light
+    Light light;
+    light.type = Light::Type::AMBIENT;
+    light.ambient.color = make_float3(0.35f, 0.35f, 0.35f);
+    light.ambient.color = make_float3(0.0f, 0.0f, 0.0f);
+    lights.push_back(light);
+
+    // Point lights
+    for (int i = 0; i < pointLights.size(); ++i) {
+        light.type = Light::Type::POINT;
+        light.point.color = i < lightColors.size() ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.point.intensity = 1.0f;
+        light.point.position = pointLights[i];
+        lights.push_back(light);
     }
-#endif
+
+    // Distant lights
+    for (int i = 0; i < distantLights.size(); ++i) {
+        light.type = Light::Type::DISTANT;
+        light.distant.color = pointLights.size() + i < lightColors.size()
+            ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.distant.intensity = 1.0f;
+        light.distant.direction = normalize(distantLights[i]);
+        light.distant.radius = length(scene.aabb().m_max - scene.aabb().m_min) * 0.5f;
+        lights.push_back(light);
+    }
+
+    // No lights => use default lights
+    if (pointLights.empty() && distantLights.empty())
+    {
+        const float loffset = scene.aabb().maxExtent();
+        light.type = Light::Type::POINT;
+        light.point.color = { 1.0f, 1.0f, 0.8f };
+        light.point.intensity = 5.0f;
+        light.point.position = scene.aabb().center() + make_float3(loffset);
+        lights.push_back(light);
+        light.type = Light::Type::POINT;
+        light.point.color = { 0.8f, 0.8f, 1.0f };
+        light.point.intensity = 3.0f;
+        light.point.position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
+        lights.push_back(light);
+    }
 
     params.lights.count = static_cast<uint32_t>(lights.size());
     CUDA_CHECK(cudaMalloc(
@@ -567,6 +593,8 @@ int main(int argc, char* argv[])
     //
     std::string outfile;
     std::vector<std::string> infiles;
+    std::vector<Frame> frameBegins;
+    std::vector<Frame> frameEnds;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -584,7 +612,10 @@ int main(int argc, char* argv[])
     Environment* env = new AppEnvironment();
     Environment::setInstance(env);
     if (!env->parse(argc, argv))
+    {
         std::cerr << "Parsing failed environment file!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
     Environment::getInstance()->getStringValue("Film.filename", outfile);
     Environment::getInstance()->getIntValue("Film.width", width);
@@ -594,6 +625,8 @@ int main(int argc, char* argv[])
     Environment::getInstance()->getFloatValue("Sampler.samples", samples_per_launch);
 
     Environment::getInstance()->getStringValues("Model.filename", infiles);
+    Environment::getInstance()->getFrameValues("Model.frameBegin", frameBegins);
+    Environment::getInstance()->getFrameValues("Model.frameEnd", frameEnds);
 
     if (infiles.empty())
     {
@@ -601,12 +634,31 @@ int main(int argc, char* argv[])
         printUsageAndExit(argv[0]);
     }
 
+    if (frameBegins.size() != frameEnds.size())
+    {
+        std::cerr << "Unpaired frames!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
     try
     {
         sutil::Denoiser denoiser;
         sutil::Scene scene(mdas_on);
-        for (auto& infile : infiles)
-            sutil::loadScene(infile.c_str(), scene);
+
+        for (size_t i = 0; i < infiles.size(); ++i)
+        {
+            size_t mesh_offset = scene.meshes().size();
+            sutil::loadScene(infiles[i].c_str(), scene);
+            size_t j = infiles.size() - frameBegins.size();
+            if (i >= j) 
+            {
+                for (size_t k = mesh_offset; k < scene.meshes().size(); ++k)
+                {
+                    scene.meshes()[k]->frames.push_back(frameBegins[i - j]);
+                    scene.meshes()[k]->frames.push_back(frameEnds[i - j]);
+                }
+            }
+        }
         scene.finalize();
 
         OPTIX_CHECK(optixInit()); // Need to initialize function table

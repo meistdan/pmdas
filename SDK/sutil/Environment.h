@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-#include <sutil/vec_math.h>
+#include <sutil/Frame.h>
 #include <sutil/sutilapi.h>
 
 enum OptType {
@@ -13,6 +13,7 @@ enum OptType {
     OPT_BOOL,
     OPT_VECTOR3,
     OPT_VECTOR4,
+    OPT_FRAME,
     OPT_STRING
 };
 
@@ -55,6 +56,7 @@ public:
     SUTILAPI bool getBoolValue(const std::string& name, bool& value);
     SUTILAPI bool getVector3Value(const std::string& name, float3& value);
     SUTILAPI bool getVector4Value(const std::string& name, float4& value);
+    SUTILAPI bool getFrameValue(const std::string& name, Frame& value);
     SUTILAPI bool getStringValue(const std::string& name, std::string& value);
 
     SUTILAPI bool getIntValues(const std::string& name, std::vector<int>& values);
@@ -62,6 +64,7 @@ public:
     SUTILAPI bool getBoolValues(const std::string& name, std::vector<bool>& values);
     SUTILAPI bool getVector3Values(const std::string& name, std::vector<float3>& values);
     SUTILAPI bool getVector4Values(const std::string& name, std::vector<float4>& values);
+    SUTILAPI bool getFrameValues(const std::string& name, std::vector<Frame>& values);
     SUTILAPI bool getStringValues(const std::string& name, std::vector<std::string>& values);
 
     SUTILAPI bool parse(int argc, char** argv);

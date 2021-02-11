@@ -32,6 +32,7 @@
 #include <cuda/MaterialData.h>
 #include <sutil/Aabb.h>
 #include <sutil/Camera.h>
+#include <sutil/Frame.h>
 #include <sutil/Matrix.h>
 #include <sutil/Preprocessor.h>
 #include <sutil/sutilapi.h>
@@ -68,8 +69,12 @@ public:
 
         std::vector<int32_t>              material_idx;
 
+        std::vector<Frame>                frames;
+
         OptixTraversableHandle            gas_handle = 0;
+        OptixTraversableHandle            gas_handle_m = 0;
         CUdeviceptr                       d_gas_output = 0;
+        CUdeviceptr                       d_motion_transform = 0;
 
         Aabb                              object_aabb;
         Aabb                              world_aabb;
@@ -111,6 +116,7 @@ public:
     SUTILAPI const std::vector<cudaTextureObject_t>&   samplers() const             { return m_samplers;   }
     SUTILAPI const std::vector<CUdeviceptr>&           buffers() const              { return m_samplers;   }
     SUTILAPI const std::vector<std::shared_ptr<MeshGroup>>& meshes() const          { return m_meshes;     }
+    SUTILAPI const std::vector<cudaArray_t>&           images() const                { return m_images;     }
 
     SUTILAPI void remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model, size_t mesh_offset);
 

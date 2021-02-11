@@ -128,6 +128,7 @@ extern "C" __global__ void __raygen__pinhole()
         traceRadiance(whitted::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset
             1e16f,  // tmax
+            rnd(seed),
             &payload);
 
         // Add result
@@ -293,11 +294,15 @@ extern "C" __global__ void __closesthit__radiance()
     for( int i = 0; i < whitted::params.lights.count; ++i )
     {
         Light light = whitted::params.lights.at<Light>(i);
-        if( light.type == Light::Type::POINT )
+        if( light.type == Light::Type::POINT || light.type == Light::Type::DISTANT )
         {
             // TODO: optimize
-            const float  L_dist  = length( light.point.position - geom.P );
-            const float3 L       = ( light.point.position - geom.P ) / L_dist;
+            const float3 L = light.type == Light::Type::POINT ?
+                                        normalize(light.point.position - geom.P) :
+                                        normalize(light.distant.direction);
+            const float  L_dist  = light.type == Light::Type::POINT ? 
+                                        length( light.point.position - geom.P ) :
+                                        2.0f * light.distant.radius;
             const float3 V       = -normalize( optixGetWorldRayDirection() );
             const float3 H       = normalize( L + V );
             const float  N_dot_L = dot( N, L );
@@ -309,7 +314,7 @@ extern "C" __global__ void __closesthit__radiance()
             {
                 const float tmin     = 0.001f;           // TODO
                 const float tmax     = L_dist - 0.001f;  // TODO
-                const bool  occluded = whitted::traceOcclusion( whitted::params.handle, geom.P, L, tmin, tmax );
+                const bool  occluded = whitted::traceOcclusion( whitted::params.handle, geom.P, L, tmin, tmax, optixGetRayTime());
                 if( !occluded )
                 {
                     const float3 F     = whitted::schlick( spec_color, V_dot_H );

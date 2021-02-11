@@ -268,8 +268,8 @@ void loadScene( const std::string& filename, Scene& scene )
     //scene.cleanup();
     size_t material_offset = scene.materials().size();
     size_t sampler_offset = scene.samplers().size();
-    size_t buffer_offset = scene.buffers().size();
     size_t mesh_offset = scene.meshes().size();
+    size_t image_offset = scene.images().size();
 
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -326,7 +326,7 @@ void loadScene( const std::string& filename, Scene& scene )
     {
         if( gltf_texture.sampler == -1 )
         {
-            scene.addSampler( cudaAddressModeWrap, cudaAddressModeWrap, cudaFilterModeLinear, gltf_texture.source );
+            scene.addSampler( cudaAddressModeWrap, cudaAddressModeWrap, cudaFilterModeLinear, gltf_texture.source + image_offset );
             continue;
         }
 
@@ -340,7 +340,7 @@ void loadScene( const std::string& filename, Scene& scene )
                                                                                             cudaAddressModeWrap;
         const cudaTextureFilterMode  filter    = gltf_sampler.minFilter == GL_NEAREST     ? cudaFilterModePoint   :
                                                                                             cudaFilterModeLinear;
-        scene.addSampler( address_s, address_t, filter, gltf_texture.source );
+        scene.addSampler( address_s, address_t, filter, gltf_texture.source + image_offset );
     }
 
     //
@@ -689,8 +689,11 @@ void sutil::Scene::cleanup()
         CUDA_CHECK( cudaFree( reinterpret_cast<void*>( m_sbt.hitgroupRecordBase ) ) );
         m_sbt.hitgroupRecordBase = 0;
     }
-    for( auto mesh : m_meshes )
-        CUDA_CHECK( cudaFree( reinterpret_cast<void*>( mesh->d_gas_output ) ) );
+    for (auto mesh : m_meshes)
+    {
+        CUDA_CHECK(cudaFree(reinterpret_cast<void*>(mesh->d_gas_output)));
+        //CUDA_CHECK(cudaFree(reinterpret_cast<void*>(mesh->d_motion_transform)));
+    }
     m_meshes.clear();
 }
 
@@ -933,8 +936,6 @@ void Scene::buildMeshAccels( uint32_t triangle_input_flags )
     std::multimap<size_t, GASInfo> gases;
     size_t totalTempOutputSize = 0;
 
-    //m_meshes.pop_back();
-
     for(size_t i=0; i<m_meshes.size(); ++i)
     {
         auto& mesh = m_meshes[i];
@@ -1148,19 +1149,79 @@ void Scene::buildInstanceAccel( int rayTypeCount )
     const size_t num_instances = m_meshes.size();
 
     std::vector<OptixInstance> optix_instances( num_instances );
-
+    
+    bool motion_blur = false;
     unsigned int sbt_offset = 0;
     for( size_t i = 0; i < m_meshes.size(); ++i )
     {
         auto  mesh = m_meshes[i];
+        if (!mesh->frames.empty())
+        {
+            assert(mesh->frames.size() == 2);
+            OptixMatrixMotionTransform motion_transform = {};
+            motion_transform.child = mesh->gas_handle;
+            motion_transform.motionOptions.numKeys = 2;
+            motion_transform.motionOptions.timeBegin = 0.0f;
+            motion_transform.motionOptions.timeEnd = 1.0f;
+            motion_transform.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+            
+            for (size_t j = 0; j < mesh->frames.size(); ++j)
+            {
+                Matrix4x4 S = Matrix4x4::scale(mesh->frames[j].scale);
+                Matrix4x4 R = Matrix4x4::rotate(mesh->frames[j].rotate.w / 180.0f * M_PI,
+                    normalize(make_float3(mesh->frames[j].rotate.x, mesh->frames[j].rotate.y, mesh->frames[j].rotate.z)));
+                Matrix4x4 T = Matrix4x4::translate(mesh->frames[j].translate);
+                Matrix4x4 M = T * R * S;
+
+#if 0
+                Matrix4x4 R1 = Matrix4x4::rotate(90.0f / 180.0f * M_PIf, normalize(make_float3(1, 0, 0)));
+                //Matrix4x4 R2 = Matrix4x4::rotate(35.0f / 180.0f * M_PIf, normalize(make_float3(1, 1, 4)));
+                Matrix4x4 R3 = Matrix4x4::rotate(2.0f / 180.0f * M_PIf, normalize(make_float3(2, 0, 0)));
+                Matrix4x4 R2 = Matrix4x4::rotate(33.0f / 180.0f * M_PIf, normalize(make_float3(2, 1, 5)));
+                Matrix4x4 RR = R3 * R1 * R2;
+                float3 A;
+                A.x = RR[9] - RR[6];
+                A.y = RR[2] - RR[8];
+                A.z = RR[4] - RR[1];
+                float tr = RR[0] + RR[5] + RR[10];
+                std::cout << "AXIS " << A.x << " " << A.y << " " << A.z << std::endl;
+                std::cout << "RR.det " << RR.det() << std::endl;
+                std::cout << "ANGLE " << 180.0f * acos((tr - 1.0f) / 2.0f) / M_PIf << std::endl;
+                std::cout << dot(A, A) / 2.0f << std::endl;
+#endif
+                memcpy(reinterpret_cast<unsigned char*>(&motion_transform.transform) + 
+                    j * 12 * sizeof(float), &M, 12 * sizeof(float));
+            }
+
+            CUDA_CHECK(cudaMalloc(
+                reinterpret_cast<void**>(&mesh->d_motion_transform),
+                sizeof(OptixMatrixMotionTransform)
+            ));
+
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void*>(mesh->d_motion_transform),
+                &motion_transform,
+                sizeof(OptixMatrixMotionTransform),
+                cudaMemcpyHostToDevice
+            ));
+
+            OPTIX_CHECK(optixConvertPointerToTraversableHandle(
+                m_context,
+                mesh->d_motion_transform,
+                OPTIX_TRAVERSABLE_TYPE_MATRIX_MOTION_TRANSFORM,
+                &mesh->gas_handle_m
+            ));
+
+            motion_blur = true;
+        }
+
         auto& optix_instance = optix_instances[i];
         memset( &optix_instance, 0, sizeof( OptixInstance ) );
-
         optix_instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
         optix_instance.instanceId        = static_cast<unsigned int>( i );
         optix_instance.sbtOffset         = sbt_offset;
         optix_instance.visibilityMask    = 1;
-        optix_instance.traversableHandle = mesh->gas_handle;
+        optix_instance.traversableHandle = mesh->frames.empty() ? mesh->gas_handle : mesh->gas_handle_m;
         memcpy( optix_instance.transform, mesh->transform.getData(), sizeof( float ) * 12 );
 
         sbt_offset += static_cast<unsigned int>( mesh->indices.size() ) * rayTypeCount;  // one sbt record per GAS build input per RAY_TYPE
@@ -1184,6 +1245,14 @@ void Scene::buildInstanceAccel( int rayTypeCount )
     OptixAccelBuildOptions accel_options = {};
     accel_options.buildFlags                  = OPTIX_BUILD_FLAG_NONE;
     accel_options.operation                   = OPTIX_BUILD_OPERATION_BUILD;
+
+    if (motion_blur)
+    {
+        accel_options.motionOptions.numKeys = 2;
+        accel_options.motionOptions.timeBegin = 0.0f;
+        accel_options.motionOptions.timeEnd = 1.0f;
+        accel_options.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+    }
 
     OptixAccelBufferSizes ias_buffer_sizes;
     OPTIX_CHECK( optixAccelComputeMemoryUsage(
@@ -1231,8 +1300,9 @@ void Scene::createPTXModule()
     module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 
     m_pipeline_compile_options = {};
-    m_pipeline_compile_options.usesMotionBlur            = false;
-    m_pipeline_compile_options.traversableGraphFlags     = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+    m_pipeline_compile_options.usesMotionBlur            = true;
+    //m_pipeline_compile_options.traversableGraphFlags     = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+    m_pipeline_compile_options.traversableGraphFlags     = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     m_pipeline_compile_options.numPayloadValues          = whitted::NUM_PAYLOAD_VALUES;
     m_pipeline_compile_options.numAttributeValues        = 2; // TODO
     m_pipeline_compile_options.exceptionFlags            = OPTIX_EXCEPTION_FLAG_NONE; // should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
@@ -1446,6 +1516,7 @@ void Scene::createSBT()
                 rec.data.geometry_data.triangle_mesh.indices   = mesh->indices[i];
 
                 const int32_t mat_idx  = mesh->material_idx[i];
+                
                 if( mat_idx >= 0 )
                     rec.data.material_data.pbr = m_materials[ mat_idx ];
                 else

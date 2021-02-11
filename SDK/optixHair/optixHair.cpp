@@ -487,14 +487,12 @@ void initializeParams( HairState* pState )
     pState->lights[0].point.color     = {1.0f, 1.0f, 1.0f};
     pState->lights[0].point.intensity = 2.0f;
     pState->lights[0].point.position  = pState->aabb.center() + make_float3( loffset );
-    pState->lights[0].point.falloff   = Light::Falloff::QUADRATIC;
 
     pState->lights[1].type            = Light::Type::POINT;
     pState->lights[1].point.color     = {1.0f, 1.0f, 1.0f};
     pState->lights[1].point.intensity = 2.0f;
     // headlight...slightly offset to the side of eye.
     pState->lights[1].point.position  = pState->camera.eye() + pState->params.U;
-    pState->lights[1].point.falloff   = Light::Falloff::QUADRATIC;
 
     pState->params.lights.count = 2;
     createOnDevice( pState->lights, &pState->params.lights.data );
