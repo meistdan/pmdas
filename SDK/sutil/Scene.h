@@ -72,7 +72,6 @@ public:
         std::vector<Frame>                frames;
 
         OptixTraversableHandle            gas_handle = 0;
-        OptixTraversableHandle            gas_handle_m = 0;
         CUdeviceptr                       d_gas_output = 0;
         CUdeviceptr                       d_motion_transform = 0;
 

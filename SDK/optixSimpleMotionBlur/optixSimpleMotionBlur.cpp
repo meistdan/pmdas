@@ -691,10 +691,10 @@ void buildInstanceAccel( SimpleMotionBlurState& state )
     accel_options.buildFlags              = OPTIX_BUILD_FLAG_NONE;
     accel_options.operation               = OPTIX_BUILD_OPERATION_BUILD;
 
-    //accel_options.motionOptions.numKeys   = 2;
-    //accel_options.motionOptions.timeBegin = 0.0f;
-    //accel_options.motionOptions.timeEnd   = 1.0f;
-    //accel_options.motionOptions.flags     = OPTIX_MOTION_FLAG_NONE;
+    accel_options.motionOptions.numKeys   = 2;
+    accel_options.motionOptions.timeBegin = 0.0f;
+    accel_options.motionOptions.timeEnd   = 1.0f;
+    accel_options.motionOptions.flags     = OPTIX_MOTION_FLAG_NONE;
 
     OptixAccelBufferSizes ias_buffer_sizes;
     OPTIX_CHECK( optixAccelComputeMemoryUsage(

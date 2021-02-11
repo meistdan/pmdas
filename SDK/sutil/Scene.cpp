@@ -1157,10 +1157,13 @@ void Scene::buildInstanceAccel( int rayTypeCount )
         auto  mesh = m_meshes[i];
         if (!mesh->frames.empty())
         {
-            assert(mesh->frames.size() == 2);
-            OptixMatrixMotionTransform motion_transform = {};
+            assert(mesh->frames.front().time == 0.0f);
+            assert(mesh->frames.back().time == 1.0f);
+            size_t transformSizeInBytes = sizeof(OptixMatrixMotionTransform) + (mesh->frames.size() - 2) * 12 * sizeof(float);
+            std::vector<unsigned char> motion_transform_buffer(transformSizeInBytes);
+            OptixMatrixMotionTransform& motion_transform = *reinterpret_cast<OptixMatrixMotionTransform*>(motion_transform_buffer.data());
             motion_transform.child = mesh->gas_handle;
-            motion_transform.motionOptions.numKeys = 2;
+            motion_transform.motionOptions.numKeys = mesh->frames.size();
             motion_transform.motionOptions.timeBegin = 0.0f;
             motion_transform.motionOptions.timeEnd = 1.0f;
             motion_transform.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
@@ -1176,9 +1179,10 @@ void Scene::buildInstanceAccel( int rayTypeCount )
 #if 0
                 Matrix4x4 R1 = Matrix4x4::rotate(90.0f / 180.0f * M_PIf, normalize(make_float3(1, 0, 0)));
                 //Matrix4x4 R2 = Matrix4x4::rotate(35.0f / 180.0f * M_PIf, normalize(make_float3(1, 1, 4)));
-                Matrix4x4 R3 = Matrix4x4::rotate(2.0f / 180.0f * M_PIf, normalize(make_float3(2, 0, 0)));
-                Matrix4x4 R2 = Matrix4x4::rotate(33.0f / 180.0f * M_PIf, normalize(make_float3(2, 1, 5)));
-                Matrix4x4 RR = R3 * R1 * R2;
+                //Matrix4x4 R3 = Matrix4x4::rotate(2.0f / 180.0f * M_PIf, normalize(make_float3(2, 0, 0)));
+                //Matrix4x4 R2 = Matrix4x4::rotate(33.0f / 180.0f * M_PIf, normalize(make_float3(2, 1, 5)));
+                Matrix4x4 R2 = Matrix4x4::rotate(10.0f / 180.0f * M_PIf, normalize(make_float3(-7,  0, - 5)));
+                Matrix4x4 RR = R2 * R1;
                 float3 A;
                 A.x = RR[9] - RR[6];
                 A.y = RR[2] - RR[8];
@@ -1189,19 +1193,19 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 std::cout << "ANGLE " << 180.0f * acos((tr - 1.0f) / 2.0f) / M_PIf << std::endl;
                 std::cout << dot(A, A) / 2.0f << std::endl;
 #endif
-                memcpy(reinterpret_cast<unsigned char*>(&motion_transform.transform) + 
+                memcpy(reinterpret_cast<unsigned char*>(&motion_transform.transform[0][0]) + 
                     j * 12 * sizeof(float), &M, 12 * sizeof(float));
             }
 
             CUDA_CHECK(cudaMalloc(
                 reinterpret_cast<void**>(&mesh->d_motion_transform),
-                sizeof(OptixMatrixMotionTransform)
+                transformSizeInBytes //sizeof(OptixMatrixMotionTransform)
             ));
 
             CUDA_CHECK(cudaMemcpy(
                 reinterpret_cast<void*>(mesh->d_motion_transform),
-                &motion_transform,
-                sizeof(OptixMatrixMotionTransform),
+                motion_transform_buffer.data(),
+                transformSizeInBytes, //sizeof(OptixMatrixMotionTransform),
                 cudaMemcpyHostToDevice
             ));
 
@@ -1209,7 +1213,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 m_context,
                 mesh->d_motion_transform,
                 OPTIX_TRAVERSABLE_TYPE_MATRIX_MOTION_TRANSFORM,
-                &mesh->gas_handle_m
+                &mesh->gas_handle
             ));
 
             motion_blur = true;
@@ -1221,7 +1225,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
         optix_instance.instanceId        = static_cast<unsigned int>( i );
         optix_instance.sbtOffset         = sbt_offset;
         optix_instance.visibilityMask    = 1;
-        optix_instance.traversableHandle = mesh->frames.empty() ? mesh->gas_handle : mesh->gas_handle_m;
+        optix_instance.traversableHandle = mesh->gas_handle;
         memcpy( optix_instance.transform, mesh->transform.getData(), sizeof( float ) * 12 );
 
         sbt_offset += static_cast<unsigned int>( mesh->indices.size() ) * rayTypeCount;  // one sbt record per GAS build input per RAY_TYPE

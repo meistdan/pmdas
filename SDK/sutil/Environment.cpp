@@ -50,6 +50,7 @@ bool Environment::filterValue(const std::string& value, std::string& filteredVal
     }
     else if (type == OPT_FRAME) {
         Frame value;
+        ss >> value.time;
         ss >> value.scale.x;
         ss >> value.scale.y;
         ss >> value.scale.z;
@@ -60,7 +61,7 @@ bool Environment::filterValue(const std::string& value, std::string& filteredVal
         ss >> value.rotate.x;
         ss >> value.rotate.y;
         ss >> value.rotate.z;
-        filteredValue = std::to_string(value.scale.x) + " " + std::to_string(value.scale.y) + " " + std::to_string(value.scale.z) + " "
+        filteredValue = std::to_string(value.time) + " " + std::to_string(value.scale.x) + " " + std::to_string(value.scale.y) + " " + std::to_string(value.scale.z) + " "
             + std::to_string(value.translate.x) + " " + std::to_string(value.translate.y) + " " + std::to_string(value.translate.z) + " "
             + std::to_string(value.rotate.w) + " " + std::to_string(value.rotate.x) + " " + std::to_string(value.rotate.y) + " " + std::to_string(value.rotate.z);
     }
@@ -232,6 +233,7 @@ bool Environment::getFrameValue(const std::string& name, Frame& value) {
     if (!findOption(name, opt)) return false;
     if (!opt.values.empty() && !opt.values.front().empty()) {
         std::stringstream ss(opt.values.front());
+        ss >> value.time;
         ss >> value.scale.x;
         ss >> value.scale.y;
         ss >> value.scale.z;
@@ -246,6 +248,7 @@ bool Environment::getFrameValue(const std::string& name, Frame& value) {
     }
     else if (!opt.defaultValue.empty()) {
         std::stringstream ss(opt.defaultValue);
+        ss >> value.time;
         ss >> value.scale.x;
         ss >> value.scale.y;
         ss >> value.scale.z;
@@ -428,6 +431,7 @@ bool Environment::getFrameValues(const std::string& name, std::vector<Frame>& va
         for (i = opt.values.begin(); i != opt.values.end(); ++i) {
             Frame value;
             std::stringstream ss(*i);
+            ss >> value.time;
             ss >> value.scale.x;
             ss >> value.scale.y;
             ss >> value.scale.z;
@@ -445,6 +449,7 @@ bool Environment::getFrameValues(const std::string& name, std::vector<Frame>& va
     else if (!opt.defaultValue.empty()) {
         Frame value;
         std::stringstream ss(opt.defaultValue);
+        ss >> value.time;
         ss >> value.scale.x;
         ss >> value.scale.y;
         ss >> value.scale.z;
@@ -636,8 +641,8 @@ bool Environment::readEnvFile(const std::string& filename) {
                     }
 
                     case OPT_FRAME: {
-                        if (i + 10 >= words.size() || !filterValue(words[i + 1] + " " + words[i + 2] + " " + words[i + 3] + " " + 
-                            words[i + 4] + " " + words[i + 5] + " " + words[i + 6] + " " + words[i + 7] + " " + words[i + 8] + " " + words[i + 9] + " " + words[i + 10], value, OPT_FRAME)) {
+                        if (i + 11 >= words.size() || !filterValue(words[i + 1] + " " + words[i + 2] + " " + words[i + 3] + " " + 
+                            words[i + 4] + " " + words[i + 5] + " " + words[i + 6] + " " + words[i + 7] + " " + words[i + 8] + " " + words[i + 9] + " " + words[i + 10] + " " + words[i + 11], value, OPT_FRAME)) {
                             std::cerr << "Mismatch in vector variable " <<
                                 optionName << " in environment file '" << filename << "' (line " << lineNumber << ")." << std::endl;
                             in.close();
@@ -646,7 +651,7 @@ bool Environment::readEnvFile(const std::string& filename) {
                         else {
                             j->values.push_back(value);
                         }
-                        i += 10;
+                        i += 11;
                         break;
                     }
 

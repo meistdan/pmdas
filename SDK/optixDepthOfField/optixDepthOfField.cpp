@@ -124,8 +124,8 @@ protected:
         registerOption("Light.color", OPT_VECTOR3);
 
         registerOption("Model.filename", OPT_STRING);
-        registerOption("Model.frameBegin", OPT_FRAME);
-        registerOption("Model.frameEnd", OPT_FRAME);
+        registerOption("Model.frame", OPT_FRAME);
+        registerOption("Model.frame", OPT_FRAME);
     }
 
 public:
@@ -593,8 +593,7 @@ int main(int argc, char* argv[])
     //
     std::string outfile;
     std::vector<std::string> infiles;
-    std::vector<Frame> frameBegins;
-    std::vector<Frame> frameEnds;
+    std::vector<Frame> frames;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -625,8 +624,7 @@ int main(int argc, char* argv[])
     Environment::getInstance()->getFloatValue("Sampler.samples", samples_per_launch);
 
     Environment::getInstance()->getStringValues("Model.filename", infiles);
-    Environment::getInstance()->getFrameValues("Model.frameBegin", frameBegins);
-    Environment::getInstance()->getFrameValues("Model.frameEnd", frameEnds);
+    Environment::getInstance()->getFrameValues("Model.frame", frames);
 
     if (infiles.empty())
     {
@@ -634,7 +632,18 @@ int main(int argc, char* argv[])
         printUsageAndExit(argv[0]);
     }
 
-    if (frameBegins.size() != frameEnds.size())
+    size_t begins = 0;
+    size_t ends = 0;
+    for (auto& frame : frames) 
+    {
+        if (frame.time == 0.0f) ++begins;
+        if (frame.time == 1.0f) ++ends;
+        if (frame.time < 0.0f || frame.time > 1.0f) {
+            std::cerr << "Frame times must be in [0,1]!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (begins != ends)
     {
         std::cerr << "Unpaired frames!" << std::endl;
         exit(EXIT_FAILURE);
@@ -645,17 +654,45 @@ int main(int argc, char* argv[])
         sutil::Denoiser denoiser;
         sutil::Scene scene(mdas_on);
 
+        const size_t frame_num = 11;
+        std::vector<Frame> frameset_resampled(frame_num);
+        for (size_t i = 0; i < frame_num; ++i)
+            frameset_resampled[i].time = i * (1.0f / static_cast<float>(frame_num - 1));
+
+        size_t j = 0;
+
         for (size_t i = 0; i < infiles.size(); ++i)
         {
             size_t mesh_offset = scene.meshes().size();
             sutil::loadScene(infiles[i].c_str(), scene);
-            size_t j = infiles.size() - frameBegins.size();
-            if (i >= j) 
+            if (i >= infiles.size() - begins)
             {
+                std::vector<Frame> frameset;
+                while (frames[j].time != 1.0f)
+                    frameset.push_back(frames[j++]);
+                frameset.push_back(frames[j++]);
+                for (auto& frame : frameset_resampled)
+                {
+                    size_t minK = 0;
+                    float minDiff = FLT_MAX;
+                    for (size_t k = 0; k < frameset.size(); ++k)
+                    {
+                        float diff = fabs(frame.time - frameset[k].time);
+                        if (minDiff > diff)
+                        {
+                            minDiff = diff;
+                            minK = k;
+                        }
+                    }
+                    minK = 0;
+                    frame.rotate = frameset[minK].rotate;
+                    frame.translate = frameset[minK].translate;
+                    frame.scale = frameset[minK].scale;
+                }
                 for (size_t k = mesh_offset; k < scene.meshes().size(); ++k)
                 {
-                    scene.meshes()[k]->frames.push_back(frameBegins[i - j]);
-                    scene.meshes()[k]->frames.push_back(frameEnds[i - j]);
+                    for (auto& frame : frameset)
+                        scene.meshes()[k]->frames.push_back(frame);
                 }
             }
         }
