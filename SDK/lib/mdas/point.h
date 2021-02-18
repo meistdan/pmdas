@@ -193,7 +193,8 @@ struct PointN {
 
 };
 
-typedef PointN<4> Point;
+typedef PointN<3> Point3;
+typedef PointN<4> Point4;
 
 }  // namespace mdas
 

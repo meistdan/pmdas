@@ -6,6 +6,7 @@
 
 namespace mdas {
 
+template <typename Point>
 struct AABB {
 
     Point mn;

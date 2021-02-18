@@ -7,6 +7,7 @@
 
 namespace mdas {
 
+template <typename Point>
 class KDTree {
 
 public:
@@ -30,9 +31,24 @@ public:
         __host__ __device__ bool Leaf(void) {
             return dimension >= 0 || dimension <= ~Point::DIM;
         }
+        __host__ __device__ int Left(void) {
+            return left < 0 ? ~left : left;
+        }
+        __host__ __device__ int Right(void) {
+            return right < 0 ? ~right : right;
+        }
     };
 
-    KDTree(int maxSamples, std::ofstream* out = nullptr);
+    KDTree(
+        int maxSamples,
+        int candidatesNum,
+        int bitsPerDim,
+        int extraImgBits,
+        float errorThreshold,
+        float scaleX,
+        float scaleY,
+        std::ofstream* log
+    );
 
     void InitialSampling(void);
     void Construct(void);
@@ -84,7 +100,7 @@ private:
     Buffer<float3> sampleValues;
 
     Buffer<Node> nodes;
-    Buffer<AABB> nodeBoxes;
+    Buffer<AABB<Point>> nodeBoxes;
     Buffer<float> nodeErrors;
 
     Buffer<int> leafIndices;

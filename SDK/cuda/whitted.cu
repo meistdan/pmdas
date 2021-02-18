@@ -153,7 +153,7 @@ extern "C" __global__ void __raygen__pinhole()
 }
 
 
-extern "C" __global__ void __raygen__pinhole_mdas()
+extern "C" __global__ void __raygen__pinhole_mdas_dof()
 {
     const uint3  launch_idx = optixGetLaunchIndex();
     const uint3  launch_dims = optixGetLaunchDimensions();
@@ -166,10 +166,10 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     //
     // Generate camera ray
     //
-    mdas::Point sample = whitted::params.sample_coordinates[linear_index];
+    float4 sample = *reinterpret_cast<float4*>(&whitted::params.sample_coordinates[whitted::params.sample_dim * linear_index]);
     // The center of each pixel is at fraction (0.5,0.5)
-    const float2 d = 2.0f * make_float2(sample[0] / whitted::params.scale.x,  
-                                        sample[1] / whitted::params.scale.y) - 1.0f;
+    const float2 d = 2.0f * make_float2(sample.x / whitted::params.scale.x,  
+                                        sample.y / whitted::params.scale.y) - 1.0f;
     float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
     float3 ray_origin = make_float3(0.0f);
 
@@ -179,7 +179,7 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     if (whitted::params.lens_radius > 0.0f)
     {
         // Map uniform random numbers to $[-1,1]^2$
-        float2 rnd2 = make_float2(sample[2], sample[3]);
+        float2 rnd2 = make_float2(sample.z, sample.w);
         float2 offset = 2.f * rnd2 - make_float2(1, 1);
 
         // Handle degeneracy at the origin
@@ -225,6 +225,52 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     traceRadiance(whitted::params.handle, ray_origin, ray_direction,
         0.01f,  // tmin       // TODO: smarter offset
         1e16f,  // tmax
+        &payload);
+
+    //
+    // Update results
+    // TODO: timview mode
+    //
+    whitted::params.sample_values[linear_index] = payload.result;
+}
+
+
+extern "C" __global__ void __raygen__pinhole_mdas_mb()
+{
+    const uint3  launch_idx = optixGetLaunchIndex();
+    const uint3  launch_dims = optixGetLaunchDimensions();
+    const float3 eye = whitted::params.eye;
+    const float3 U = whitted::params.U;
+    const float3 V = whitted::params.V;
+    const float3 W = whitted::params.W;
+    const int    linear_index = whitted::params.sample_offset + launch_idx.y * launch_dims.x + launch_idx.x;
+
+    //
+    // Generate camera ray
+    //
+    float3 sample = *reinterpret_cast<float3*>(&whitted::params.sample_coordinates[whitted::params.sample_dim * linear_index]);
+    // The center of each pixel is at fraction (0.5,0.5)
+    const float2 d = 2.0f * make_float2(sample.x / whitted::params.scale.x,
+        sample.y / whitted::params.scale.y) - 1.0f;
+    float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
+    float3 ray_origin = make_float3(0.0f);
+
+    // Transform
+    ray_origin += eye;
+    ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
+
+    //
+    // Trace camera ray
+    //
+    whitted::PayloadRadiance payload;
+    payload.result = make_float3(0.0f);
+    payload.importance = 1.0f;
+    payload.depth = 0.0f;
+
+    traceRadiance(whitted::params.handle, ray_origin, ray_direction,
+        0.01f,  // tmin       // TODO: smarter offset
+        1e16f,  // tmax
+        sample.z,
         &payload);
 
     //

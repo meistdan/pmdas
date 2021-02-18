@@ -76,10 +76,11 @@ struct LaunchParams
     float                    lens_radius;
 
     float2                   scale;
-    mdas::Point*             sample_coordinates;
+    float*                   sample_coordinates;
     float3*                  sample_values;
     int                      sample_offset;
     int                      sample_count;
+    int                      sample_dim;
 
     BufferView               lights;
     float3                   miss_color;

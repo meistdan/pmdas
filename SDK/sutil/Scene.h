@@ -51,11 +51,16 @@
 namespace sutil
 {
 
-
 class Scene
 {
 public:
-    SUTILAPI Scene(bool mdas = false);
+    enum SamplingType
+    {
+        SAMPLING_TYPE_RANDOM = 0,
+        SAMPLING_TYPE_MDAS_MOTION_BLUR = 1,
+        SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD = 2
+    };
+    SUTILAPI Scene(SamplingType sampling_type = SAMPLING_TYPE_RANDOM);
     SUTILAPI ~Scene();
     struct MeshGroup
     {
@@ -153,7 +158,7 @@ private:
     OptixTraversableHandle               m_ias_handle               = 0;
     CUdeviceptr                          m_d_ias_output_buffer      = 0;
 
-    bool m_mdas = false;
+    SamplingType                         m_sampling_type            = SAMPLING_TYPE_RANDOM;
 };
 
 

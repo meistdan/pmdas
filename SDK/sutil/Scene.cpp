@@ -463,7 +463,7 @@ void loadScene( const std::string& filename, Scene& scene )
 }
 
 
-Scene::Scene( bool mdas ) : m_mdas(mdas) 
+Scene::Scene( SamplingType sampling_type ) : m_sampling_type(sampling_type) 
 {
     cleanup();
 }
@@ -1345,8 +1345,10 @@ void Scene::createProgramGroups()
         OptixProgramGroupDesc raygen_prog_group_desc = {};
         raygen_prog_group_desc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
         raygen_prog_group_desc.raygen.module            = m_ptx_module;
-        if (m_mdas)
-            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
+        if (m_sampling_type == SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas_dof";
+        else if (m_sampling_type == SAMPLING_TYPE_MDAS_MOTION_BLUR)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas_mb";
         else
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";
 

@@ -88,7 +88,7 @@ int32_t                 width = 1920;
 int32_t                 height = 1080;
 
 // MDAS
-mdas::KDTree* kdtree = nullptr;
+mdas::KDTree<mdas::Point4>* kdtree = nullptr;
 
 // Denoiser
 sutil::Denoiser denoiser;
@@ -118,6 +118,13 @@ protected:
 
         registerOption("Sampler.samples", "1", OPT_FLOAT);
         registerOption("Sampler.mdas", "0", OPT_BOOL);
+
+        registerOption("Mdas.scaleX", "1024.0", OPT_FLOAT);
+        registerOption("Mdas.scaleY", "512.0", OPT_FLOAT);
+        registerOption("Mdas.errorThreshold", "0.025", OPT_FLOAT);
+        registerOption("Mdas.bitsPerDim", "0", OPT_INT);
+        registerOption("Mdas.extraImgBits", "8", OPT_INT);
+        registerOption("Mdas.candidatesNum", "4", OPT_INT);
 
         registerOption("Light.point", OPT_VECTOR3);
         registerOption("Light.distant", OPT_VECTOR3);
@@ -292,20 +299,21 @@ void initLaunchParams(const sutil::Scene& scene) {
     Light light;
     light.type = Light::Type::AMBIENT;
     light.ambient.color = make_float3(0.35f, 0.35f, 0.35f);
-    light.ambient.color = make_float3(0.0f, 0.0f, 0.0f);
     lights.push_back(light);
 
     // Point lights
-    for (int i = 0; i < pointLights.size(); ++i) {
+    for (int i = 0; i < pointLights.size(); ++i) 
+    {
         light.type = Light::Type::POINT;
         light.point.color = i < lightColors.size() ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
-        light.point.intensity = 1.0f;
+        light.point.intensity = 5.0f;
         light.point.position = pointLights[i];
         lights.push_back(light);
     }
 
     // Distant lights
-    for (int i = 0; i < distantLights.size(); ++i) {
+    for (int i = 0; i < distantLights.size(); ++i) 
+    {
         light.type = Light::Type::DISTANT;
         light.distant.color = pointLights.size() + i < lightColors.size()
             ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
@@ -346,7 +354,6 @@ void initLaunchParams(const sutil::Scene& scene) {
     params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
     params.miss_color = make_float3(0.1f);
 
-    //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(whitted::LaunchParams)));
 
     params.handle = scene.traversableHandle();
@@ -355,14 +362,34 @@ void initLaunchParams(const sutil::Scene& scene) {
 
 void initMdas(std::ofstream* log = nullptr)
 {
-    kdtree = new mdas::KDTree(max_samples, log);
+    float errorThreshold, scaleX, scaleY;
+    int bitsPerDim, extraImgBits, candidatesNum;
+
+    Environment::getInstance()->getFloatValue("Mdas.errorThreshold", errorThreshold);
+    Environment::getInstance()->getFloatValue("Mdas.scaleX", scaleX);
+    Environment::getInstance()->getFloatValue("Mdas.scaleY", scaleY);
+    Environment::getInstance()->getIntValue("Mdas.bitsPerDim", bitsPerDim);
+    Environment::getInstance()->getIntValue("Mdas.extraImgBits", extraImgBits);
+    Environment::getInstance()->getIntValue("Mdas.candidatesNum", candidatesNum);
+
+    kdtree = new mdas::KDTree<mdas::Point4>(
+        max_samples, 
+        candidatesNum,
+        bitsPerDim,
+        extraImgBits,
+        errorThreshold,
+        scaleX,
+        scaleY,
+        log
+        );
     kdtree->Build();
 
     params.scale = make_float2(kdtree->GetScaleX(), kdtree->GetScaleY());
-    params.sample_coordinates = kdtree->GetSampleCoordinates().Data();
+    params.sample_coordinates = reinterpret_cast<float*>(kdtree->GetSampleCoordinates().Data());
     params.sample_values = kdtree->GetSampleValues().Data();
     params.sample_count = kdtree->GetNumberOfSamples();
     params.sample_offset = 0;
+    params.sample_dim = mdas::Point4::DIM;
 }
 
 
@@ -384,14 +411,6 @@ void handleCameraUpdate(whitted::LaunchParams& params)
 
     params.focal_distance = camera.focalDistance();
     params.lens_radius = camera.lensRadius();
-    /*
-    std::cerr
-        << "Updating camera:\n"
-        << "\tU: " << params.U.x << ", " << params.U.y << ", " << params.U.z << std::endl
-        << "\tV: " << params.V.x << ", " << params.V.y << ", " << params.V.z << std::endl
-        << "\tW: " << params.W.x << ", " << params.W.y << ", " << params.W.z << std::endl;
-        */
-
 }
 
 
@@ -487,7 +506,7 @@ void launchSubframe(
 void samplingPassMdas()
 {
     kdtree->SamplingPass();
-    //kdtree->Validate();
+    kdtree->Validate();
     params.sample_count = kdtree->GetNewSamples();
     params.sample_offset = kdtree->GetNumberOfSamples() - kdtree->GetNewSamples();
 }
@@ -498,7 +517,7 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
     float4* result_buffer_data = output_buffer.map();
     uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
     kdtree->UpdateIndices();
-    //kdtree->Validate();
+    kdtree->Validate();
     kdtree->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();
     output_buffer_bytes.unmap();
@@ -555,10 +574,6 @@ void initCameraState(const sutil::Scene& scene)
     if (Environment::getInstance()->getFloatValue("Camera.lensRadius", lensRadius)) 
         camera.setLensRadius(lensRadius);
 
-    //camera.setFocalDistance(1.0f);
-    //camera.setLensRadius(0.005f);
-    //camera.setFocalDistance(20.0f);
-    //camera.setLensRadius(0.3f);
     camera_changed = true;
 
     trackball.setCamera(&camera);
@@ -652,7 +667,7 @@ int main(int argc, char* argv[])
     try
     {
         sutil::Denoiser denoiser;
-        sutil::Scene scene(mdas_on);
+        sutil::Scene scene(mdas_on ? sutil::Scene::SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD : sutil::Scene::SAMPLING_TYPE_RANDOM);
 
         const size_t frame_num = 11;
         std::vector<Frame> frameset_resampled(frame_num);
