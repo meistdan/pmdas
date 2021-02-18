@@ -158,6 +158,7 @@ private:
     OptixTraversableHandle               m_ias_handle               = 0;
     CUdeviceptr                          m_d_ias_output_buffer      = 0;
 
+    bool                                 m_motion_blur              = false;
     SamplingType                         m_sampling_type            = SAMPLING_TYPE_RANDOM;
 };
 

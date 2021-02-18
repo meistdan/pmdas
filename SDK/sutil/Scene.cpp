@@ -1150,11 +1150,11 @@ void Scene::buildInstanceAccel( int rayTypeCount )
 
     std::vector<OptixInstance> optix_instances( num_instances );
     
-    bool motion_blur = false;
+    m_motion_blur = false;
     unsigned int sbt_offset = 0;
     for( size_t i = 0; i < m_meshes.size(); ++i )
     {
-        auto  mesh = m_meshes[i];
+        auto mesh = m_meshes[i];
         if (!mesh->frames.empty())
         {
             assert(mesh->frames.front().time == 0.0f);
@@ -1176,23 +1176,6 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 Matrix4x4 T = Matrix4x4::translate(mesh->frames[j].translate);
                 Matrix4x4 M = T * R * S;
 
-#if 0
-                Matrix4x4 R1 = Matrix4x4::rotate(90.0f / 180.0f * M_PIf, normalize(make_float3(1, 0, 0)));
-                //Matrix4x4 R2 = Matrix4x4::rotate(35.0f / 180.0f * M_PIf, normalize(make_float3(1, 1, 4)));
-                //Matrix4x4 R3 = Matrix4x4::rotate(2.0f / 180.0f * M_PIf, normalize(make_float3(2, 0, 0)));
-                //Matrix4x4 R2 = Matrix4x4::rotate(33.0f / 180.0f * M_PIf, normalize(make_float3(2, 1, 5)));
-                Matrix4x4 R2 = Matrix4x4::rotate(10.0f / 180.0f * M_PIf, normalize(make_float3(-7,  0, - 5)));
-                Matrix4x4 RR = R2 * R1;
-                float3 A;
-                A.x = RR[9] - RR[6];
-                A.y = RR[2] - RR[8];
-                A.z = RR[4] - RR[1];
-                float tr = RR[0] + RR[5] + RR[10];
-                std::cout << "AXIS " << A.x << " " << A.y << " " << A.z << std::endl;
-                std::cout << "RR.det " << RR.det() << std::endl;
-                std::cout << "ANGLE " << 180.0f * acos((tr - 1.0f) / 2.0f) / M_PIf << std::endl;
-                std::cout << dot(A, A) / 2.0f << std::endl;
-#endif
                 memcpy(reinterpret_cast<unsigned char*>(&motion_transform.transform[0][0]) + 
                     j * 12 * sizeof(float), &M, 12 * sizeof(float));
             }
@@ -1216,7 +1199,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 &mesh->gas_handle
             ));
 
-            motion_blur = true;
+            m_motion_blur = true;
         }
 
         auto& optix_instance = optix_instances[i];
@@ -1250,7 +1233,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
     accel_options.buildFlags                  = OPTIX_BUILD_FLAG_NONE;
     accel_options.operation                   = OPTIX_BUILD_OPERATION_BUILD;
 
-    if (motion_blur)
+    if (m_motion_blur)
     {
         accel_options.motionOptions.numKeys = 2;
         accel_options.motionOptions.timeBegin = 0.0f;
@@ -1305,8 +1288,8 @@ void Scene::createPTXModule()
 
     m_pipeline_compile_options = {};
     m_pipeline_compile_options.usesMotionBlur            = true;
-    //m_pipeline_compile_options.traversableGraphFlags     = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-    m_pipeline_compile_options.traversableGraphFlags     = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
+    m_pipeline_compile_options.traversableGraphFlags     = m_motion_blur ? OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY : 
+                                                                           OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
     m_pipeline_compile_options.numPayloadValues          = whitted::NUM_PAYLOAD_VALUES;
     m_pipeline_compile_options.numAttributeValues        = 2; // TODO
     m_pipeline_compile_options.exceptionFlags            = OPTIX_EXCEPTION_FLAG_NONE; // should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
