@@ -37,7 +37,7 @@
 
 #include <sampleConfig.h>
 
-#include <cuda/whitted.h>
+#include <cuda/ao.h>
 #include <cuda/Light.h>
 
 #include <sutil/Camera.h>
@@ -80,10 +80,11 @@ int32_t           mouse_button = -1;
 
 int32_t           max_samples = 30000000;
 float             samples_per_launch = 1;
+float             ao_radius = 200.0f;
 bool              mdas_on = false;
 
-whitted::LaunchParams* d_params = nullptr;
-whitted::LaunchParams   params = {};
+ao::LaunchParams* d_params = nullptr;
+ao::LaunchParams   params = {};
 int32_t                 width = 1920;
 int32_t                 height = 1080;
 
@@ -109,8 +110,6 @@ protected:
         registerOption("Camera.direction", OPT_VECTOR3);
         registerOption("Camera.upVector", "0.0 1.0 0.0", OPT_VECTOR3);
         registerOption("Camera.fovy", "45.0", OPT_FLOAT);
-        registerOption("Camera.focalDistance", "0.0", OPT_FLOAT);
-        registerOption("Camera.lensRadius", "0.0", OPT_FLOAT);
 
         registerOption("Film.filename", OPT_STRING);
         registerOption("Film.width", "1024", OPT_INT);
@@ -119,8 +118,8 @@ protected:
         registerOption("Sampler.samples", "1", OPT_FLOAT);
         registerOption("Sampler.mdas", "0", OPT_BOOL);
 
-        registerOption("Mdas.scaleX", "1024.0", OPT_FLOAT);
-        registerOption("Mdas.scaleY", "512.0", OPT_FLOAT);
+        registerOption("Mdas.scaleX", "1.0", OPT_FLOAT);
+        registerOption("Mdas.scaleY", "1.0", OPT_FLOAT);
         registerOption("Mdas.errorThreshold", "0.025", OPT_FLOAT);
         registerOption("Mdas.bitsPerDim", "0", OPT_INT);
         registerOption("Mdas.extraImgBits", "8", OPT_INT);
@@ -136,7 +135,7 @@ protected:
     }
 
 public:
-    
+
     AppEnvironment(void) {
         registerOptions();
     }
@@ -285,78 +284,10 @@ void initLaunchParams(const sutil::Scene& scene) {
     ));
     params.frame_buffer = nullptr; // Will be set when output buffer is mapped
     params.subframe_index = 0u;
-
-    // Parse lights
-    std::vector<Light> lights;
-    std::vector<float3> pointLights;
-    std::vector<float3> distantLights;
-    std::vector<float3> lightColors;
-    Environment::getInstance()->getVector3Values("Light.point", pointLights);
-    Environment::getInstance()->getVector3Values("Light.distant", distantLights);
-    Environment::getInstance()->getVector3Values("Light.color", lightColors);
-    
-    // Ambient light
-    Light light;
-    light.type = Light::Type::AMBIENT;
-    light.ambient.color = make_float3(0.35f, 0.35f, 0.35f);
-    lights.push_back(light);
-
-    // Point lights
-    for (int i = 0; i < pointLights.size(); ++i) 
-    {
-        light.type = Light::Type::POINT;
-        light.point.color = i < lightColors.size() ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
-        light.point.intensity = 5.0f;
-        light.point.position = pointLights[i];
-        lights.push_back(light);
-    }
-
-    // Distant lights
-    for (int i = 0; i < distantLights.size(); ++i) 
-    {
-        light.type = Light::Type::DISTANT;
-        light.distant.color = pointLights.size() + i < lightColors.size()
-            ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
-        light.distant.intensity = 1.0f;
-        light.distant.direction = normalize(distantLights[i]);
-        light.distant.radius = length(scene.aabb().m_max - scene.aabb().m_min) * 0.5f;
-        lights.push_back(light);
-    }
-
-    // No lights => use default lights
-    if (pointLights.empty() && distantLights.empty())
-    {
-        const float loffset = scene.aabb().maxExtent();
-        light.type = Light::Type::POINT;
-        light.point.color = { 1.0f, 1.0f, 0.8f };
-        light.point.intensity = 5.0f;
-        light.point.position = scene.aabb().center() + make_float3(loffset);
-        lights.push_back(light);
-        light.type = Light::Type::POINT;
-        light.point.color = { 0.8f, 0.8f, 1.0f };
-        light.point.intensity = 3.0f;
-        light.point.position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
-        lights.push_back(light);
-    }
-
-    params.lights.count = static_cast<uint32_t>(lights.size());
-    CUDA_CHECK(cudaMalloc(
-        reinterpret_cast<void**>(&params.lights.data),
-        lights.size() * sizeof(Light)
-    ));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(params.lights.data),
-        lights.data(),
-        lights.size() * sizeof(Light),
-        cudaMemcpyHostToDevice
-    ));
-
     params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
-    params.miss_color = make_float3(0.1f);
-
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(whitted::LaunchParams)));
-
+    params.radius = ao_radius;
     params.handle = scene.traversableHandle();
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(ao::LaunchParams)));
 }
 
 
@@ -373,7 +304,7 @@ void initMdas(std::ofstream* log = nullptr)
     Environment::getInstance()->getIntValue("Mdas.candidatesNum", candidatesNum);
 
     kdtree = new mdas::KDTree<mdas::Point4>(
-        max_samples, 
+        max_samples,
         candidatesNum,
         bitsPerDim,
         extraImgBits,
@@ -399,7 +330,7 @@ void initDenoising(const sutil::Scene& scene)
 }
 
 
-void handleCameraUpdate(whitted::LaunchParams& params)
+void handleCameraUpdate(ao::LaunchParams& params)
 {
     if (!camera_changed)
         return;
@@ -408,9 +339,6 @@ void handleCameraUpdate(whitted::LaunchParams& params)
     camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
     params.eye = camera.eye();
     camera.UVWFrame(params.U, params.V, params.W);
-
-    params.focal_distance = camera.focalDistance();
-    params.lens_radius = camera.lensRadius();
 }
 
 
@@ -430,7 +358,7 @@ void handleResize(
 void updateState(
     sutil::CUDAOutputBuffer<float4>& output_buffer,
     sutil::CUDAOutputBuffer<uchar4>& output_buffer_bytes,
-    whitted::LaunchParams& params
+    ao::LaunchParams& params
 )
 {
     // Update params on device
@@ -466,7 +394,7 @@ void launchSubframe(
 
     CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_params),
         &params,
-        sizeof(whitted::LaunchParams),
+        sizeof(ao::LaunchParams),
         cudaMemcpyHostToDevice,
         0 // stream
     ));
@@ -477,7 +405,7 @@ void launchSubframe(
             scene.pipeline(),
             0,             // stream
             reinterpret_cast<CUdeviceptr>(d_params),
-            sizeof(whitted::LaunchParams),
+            sizeof(ao::LaunchParams),
             scene.sbt(),
             width,  // launch width
             height, // launch height
@@ -492,7 +420,7 @@ void launchSubframe(
             scene.pipeline(),
             0,             // stream
             reinterpret_cast<CUdeviceptr>(d_params),
-            sizeof(whitted::LaunchParams),
+            sizeof(ao::LaunchParams),
             scene.sbt(),
             params.sample_count,  // launch width
             1,                    // launch height
@@ -559,20 +487,16 @@ void initCameraState(const sutil::Scene& scene)
 {
     camera = scene.camera();
 
-    float focalDistance, lensRadius, fovy;
+    float fovy;
     float3 position, direction, upVector;
-    if (Environment::getInstance()->getVector3Value("Camera.position", position)) 
+    if (Environment::getInstance()->getVector3Value("Camera.position", position))
         camera.setEye(position);
-    if (Environment::getInstance()->getVector3Value("Camera.direction", direction)) 
+    if (Environment::getInstance()->getVector3Value("Camera.direction", direction))
         camera.setDirection(direction);
     if (Environment::getInstance()->getVector3Value("Camera.upVector", upVector))
         camera.setUp(upVector);
     if (Environment::getInstance()->getFloatValue("Camera.fovy", fovy))
         camera.setFovY(fovy);
-    if (Environment::getInstance()->getFloatValue("Camera.focalDistance", focalDistance))
-        camera.setFocalDistance(focalDistance);
-    if (Environment::getInstance()->getFloatValue("Camera.lensRadius", lensRadius)) 
-        camera.setLensRadius(lensRadius);
 
     camera_changed = true;
 
@@ -585,7 +509,6 @@ void initCameraState(const sutil::Scene& scene)
 
 void cleanup()
 {
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(params.lights.data)));
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
     if (kdtree != nullptr) delete kdtree;
     denoiser.cleanup();
@@ -649,7 +572,7 @@ int main(int argc, char* argv[])
 
     size_t begins = 0;
     size_t ends = 0;
-    for (auto& frame : frames) 
+    for (auto& frame : frames)
     {
         if (frame.time == 0.0f) ++begins;
         if (frame.time == 1.0f) ++ends;
@@ -668,8 +591,8 @@ int main(int argc, char* argv[])
     {
         sutil::Denoiser denoiser;
         sutil::Scene::SamplingType sampling_type = mdas_on ?
-            sutil::Scene::SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD : sutil::Scene::SAMPLING_TYPE_RANDOM;
-        sutil::Scene::TraceType trace_type = sutil::Scene::TRACE_TYPE_WHITTED;
+            sutil::Scene::SAMPLING_TYPE_MDAS : sutil::Scene::SAMPLING_TYPE_RANDOM;
+        sutil::Scene::TraceType trace_type = sutil::Scene::TRACE_TYPE_AMBIENT_OCCLUSION;
         sutil::Scene scene(sampling_type, trace_type);
 
         const size_t frame_num = 11;
@@ -719,10 +642,10 @@ int main(int argc, char* argv[])
         OPTIX_CHECK(optixInit()); // Need to initialize function table
         initCameraState(scene);
         initLaunchParams(scene);
-        
+
         if (outfile.empty())
         {
-            GLFWwindow* window = sutil::initUI("optixDepthOfField", width, height);
+            GLFWwindow* window = sutil::initUI("optixAmbientOcclusion", width, height);
             glfwSetMouseButtonCallback(window, mouseButtonCallback);
             glfwSetCursorPosCallback(window, cursorPosCallback);
             glfwSetWindowSizeCallback(window, windowSizeCallback);
@@ -757,7 +680,7 @@ int main(int argc, char* argv[])
                     {
                         if (params.subframe_index == 0)
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
-                        if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples() 
+                        if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples()
                             + kdtree->GetNumberOfLeaves() <= max_samples)
                         {
                             samplingPassMdas();
@@ -801,7 +724,7 @@ int main(int argc, char* argv[])
 
             std::ofstream log(outfile + ".log");
             if (mdas_on) initMdas(&log);
-            
+
             auto start = std::chrono::steady_clock::now();
             launchSubframe(output_buffer, output_buffer_bytes, scene);
             auto stop = std::chrono::steady_clock::now();

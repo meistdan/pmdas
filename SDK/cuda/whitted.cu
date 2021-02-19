@@ -167,7 +167,6 @@ extern "C" __global__ void __raygen__pinhole_mdas_dof()
     // Generate camera ray
     //
     float4 sample = *reinterpret_cast<float4*>(&whitted::params.sample_coordinates[whitted::params.sample_dim * linear_index]);
-    // The center of each pixel is at fraction (0.5,0.5)
     const float2 d = 2.0f * make_float2(sample.x / whitted::params.scale.x,  
                                         sample.y / whitted::params.scale.y) - 1.0f;
     float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));

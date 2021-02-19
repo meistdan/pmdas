@@ -31,72 +31,64 @@
 
 #include <cuda/BufferView.h>
 #include <cuda/GeometryData.h>
-#include <cuda/Light.h>
-#include <cuda/MaterialData.h>
 
-namespace whitted
+namespace ao
 {
 
-const unsigned int NUM_PAYLOAD_VALUES = 4u;
+    const unsigned int NUM_PAYLOAD_VALUES = 3u;
 
 
-struct HitGroupData
-{
-    GeometryData geometry_data;
-    MaterialData material_data;
-};
+    struct HitGroupData
+    {
+        GeometryData geometry_data;
+    };
 
 
-enum RayType
-{
-    RAY_TYPE_RADIANCE  = 0,
-    RAY_TYPE_OCCLUSION = 1,
-    RAY_TYPE_COUNT = 2
-};
+    enum RayType
+    {
+        RAY_TYPE_RADIANCE = 0,
+        RAY_TYPE_OCCLUSION = 1,
+        RAY_TYPE_COUNT = 2
+    };
 
 
-struct LaunchParams
-{
-    unsigned int             width;
-    unsigned int             height;
-    unsigned int             subframe_index;
-    unsigned int             samples_per_launch;
-    float4*                  accum_buffer;
-    uchar4*                  frame_buffer;
-    int                      max_depth;
+    struct LaunchParams
+    {
+        unsigned int             width;
+        unsigned int             height;
+        unsigned int             subframe_index;
+        unsigned int             samples_per_launch;
+        float4*                  accum_buffer;
+        uchar4*                  frame_buffer;
 
-    float3                   eye;
-    float3                   U;
-    float3                   V;
-    float3                   W;
-    
-    float                    focal_distance;
-    float                    lens_radius;
+        float3                   eye;
+        float3                   U;
+        float3                   V;
+        float3                   W;
 
-    float2                   scale;
-    float*                   sample_coordinates;
-    float3*                  sample_values;
-    int                      sample_offset;
-    int                      sample_count;
-    int                      sample_dim;
+        float                    radius;
 
-    BufferView               lights;
-    float3                   miss_color;
-    OptixTraversableHandle   handle;
-};
+        float2                   scale;
+        float*                   sample_coordinates;
+        float3*                  sample_values;
+        int                      sample_offset;
+        int                      sample_count;
+        int                      sample_dim;
+
+        OptixTraversableHandle   handle;
+    };
 
 
-struct PayloadRadiance
-{
-    float3 result;
-    float  importance;
-    int    depth;
-};
+    struct PayloadRadiance
+    {
+        int occluded;
+        float r0, r1;
+    };
 
 
-struct PayloadOcclusion
-{
-};
+    struct PayloadOcclusion
+    {
+    };
 
 
-} // end namespace whitted
+} // end namespace ao

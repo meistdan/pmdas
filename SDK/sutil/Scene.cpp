@@ -463,7 +463,8 @@ void loadScene( const std::string& filename, Scene& scene )
 }
 
 
-Scene::Scene( SamplingType sampling_type ) : m_sampling_type(sampling_type) 
+Scene::Scene( SamplingType sampling_type, TraceType trace_type ) 
+    : m_sampling_type(sampling_type), m_trace_type(trace_type)
 {
     cleanup();
 }
@@ -1295,7 +1296,12 @@ void Scene::createPTXModule()
     m_pipeline_compile_options.exceptionFlags            = OPTIX_EXCEPTION_FLAG_NONE; // should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
     m_pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
 
-    const std::string ptx = getPtxString( nullptr, nullptr, "whitted.cu" );
+    std::string module_name;
+    if (m_trace_type == TRACE_TYPE_AMBIENT_OCCLUSION)
+        module_name = "ao.cu";
+    else
+        module_name = "whitted.cu";
+    const std::string ptx = getPtxString( nullptr, nullptr, module_name.c_str() );
 
     m_ptx_module  = {};
     char log[2048];
@@ -1328,10 +1334,13 @@ void Scene::createProgramGroups()
         OptixProgramGroupDesc raygen_prog_group_desc = {};
         raygen_prog_group_desc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
         raygen_prog_group_desc.raygen.module            = m_ptx_module;
-        if (m_sampling_type == SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD)
+        
+        if (m_trace_type == TRACE_TYPE_WHITTED && m_sampling_type == SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD)
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas_dof";
-        else if (m_sampling_type == SAMPLING_TYPE_MDAS_MOTION_BLUR)
+        else if (m_trace_type == TRACE_TYPE_WHITTED && m_sampling_type == SAMPLING_TYPE_MDAS_MOTION_BLUR)
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas_mb";
+        else if (m_trace_type == TRACE_TYPE_AMBIENT_OCCLUSION && m_sampling_type == SAMPLING_TYPE_MDAS)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
         else
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";
 

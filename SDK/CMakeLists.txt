@@ -378,6 +378,7 @@ endfunction()
 # If you wish to start your own sample, you can copy one of the sample's directories.
 # Just make sure you rename all the occurances of the sample's name in the C code as well
 # and the CMakeLists.txt file.
+add_subdirectory( optixAmbientOcclusion )
 add_subdirectory( optixBoundValues      )
 add_subdirectory( optixCallablePrograms )
 add_subdirectory( optixCurves           )

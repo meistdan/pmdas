@@ -30,6 +30,8 @@
 
 #include <cuda/BufferView.h>
 #include <cuda/MaterialData.h>
+#include <cuda/ao.h>
+#include <cuda/whitted.h>
 #include <sutil/Aabb.h>
 #include <sutil/Camera.h>
 #include <sutil/Frame.h>
@@ -54,13 +56,22 @@ namespace sutil
 class Scene
 {
 public:
+
+    enum TraceType
+    {
+        TRACE_TYPE_WHITTED = 0,
+        TRACE_TYPE_AMBIENT_OCCLUSION = 1
+    };
+
     enum SamplingType
     {
         SAMPLING_TYPE_RANDOM = 0,
-        SAMPLING_TYPE_MDAS_MOTION_BLUR = 1,
-        SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD = 2
+        SAMPLING_TYPE_MDAS = 1,
+        SAMPLING_TYPE_MDAS_MOTION_BLUR = 2,
+        SAMPLING_TYPE_MDAS_DEPTH_OF_FIELD = 3
     };
-    SUTILAPI Scene(SamplingType sampling_type = SAMPLING_TYPE_RANDOM);
+
+    SUTILAPI Scene(SamplingType sampling_type = SAMPLING_TYPE_RANDOM, TraceType trace_type = TRACE_TYPE_WHITTED);
     SUTILAPI ~Scene();
     struct MeshGroup
     {
@@ -159,6 +170,7 @@ private:
     CUdeviceptr                          m_d_ias_output_buffer      = 0;
 
     bool                                 m_motion_blur              = false;
+    TraceType                            m_trace_type               = TRACE_TYPE_WHITTED;
     SamplingType                         m_sampling_type            = SAMPLING_TYPE_RANDOM;
 };
 
