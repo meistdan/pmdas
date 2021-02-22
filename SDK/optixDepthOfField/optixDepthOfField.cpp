@@ -215,12 +215,6 @@ static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, i
             glfwSetWindowShouldClose(window, true);
         }
     }
-    else if (key == GLFW_KEY_C)
-    {
-        std::cout << "Camera: " << std::endl;
-        std::cout << "\tEye " << camera.eye().x << " " << camera.eye().y << " " << camera.eye().z << std::endl;
-        std::cout << "\tDirection " << camera.direction().x << " " << camera.direction().y << " " << camera.direction().z << std::endl;
-    }
     else if (key == GLFW_KEY_W)
     {
         camera.setFocalDistance(camera.focalDistance() + 0.5f);
@@ -245,7 +239,7 @@ static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, i
         camera_changed = true;
         std::cout << "Lens radius " << camera.lensRadius() << std::endl;
     }
-    else if (key == GLFW_KEY_K)
+    else if (key == GLFW_KEY_C)
     {
         std::cout << "Eye " << camera.eye().x << " " << camera.eye().y << " " << camera.eye().z << std::endl;
         std::cout << "Direction " << camera.direction().x << " " << camera.direction().y << " " << camera.direction().z << std::endl;

@@ -31,6 +31,7 @@
 #include <cuda/BufferView.h>
 #include <cuda/MaterialData.h>
 #include <cuda/ao.h>
+#include <cuda/path.h>
 #include <cuda/whitted.h>
 #include <sutil/Aabb.h>
 #include <sutil/Camera.h>
@@ -60,7 +61,8 @@ public:
     enum TraceType
     {
         TRACE_TYPE_WHITTED = 0,
-        TRACE_TYPE_AMBIENT_OCCLUSION = 1
+        TRACE_TYPE_AMBIENT_OCCLUSION = 1,
+        TRACE_TYPE_PATH_TRACING = 2
     };
 
     enum SamplingType

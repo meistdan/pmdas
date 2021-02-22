@@ -116,7 +116,7 @@ static __forceinline__ __device__ float3 shade( const whitted::HitGroupData* hit
 
     for( int i = 0; i < whitted::params.lights.count; ++i )
     {
-        Light light = whitted::params.lights[i];
+        Light light = whitted::params.lights.at<Light>(i);
 
         if( light.type == Light::Type::POINT )
         {
@@ -161,7 +161,8 @@ static __forceinline__ __device__ float3 shade( const whitted::HitGroupData* hit
 static __forceinline__ __device__ float getStrandU( const GeometryData& geo, const int primitiveIndex )
 {
     float  segmentU   = optixGetCurveParameter();
-    float2 strandInfo = geo.curves.strand_u[primitiveIndex];
+
+    float2 strandInfo = geo.curves.strand_u.at<float2>(primitiveIndex);
     // strandInfo.x ~ strand u at segment start
     // strandInfo.y ~ scale factor (i.e. 1/numberOfSegments)
     return strandInfo.x + segmentU * strandInfo.y;
@@ -235,8 +236,8 @@ extern "C" __global__ void __closesthit__curve_strand_idx()
     float3       normal      = computeNormal( optixGetPrimitiveType(), primitiveIndex );
     float3       colors[6]   = {make_float3( 1, 0, 0 ), make_float3( 0, 1, 0 ), make_float3( 0, 0, 1 ),
 				make_float3( 1, 1, 0 ), make_float3( 1, 0, 1 ), make_float3( 0, 1, 1 )};
-    unsigned int strandIndex = geometryData.curves.strand_i[primitiveIndex];
-    uint2        strandInfo  = geometryData.curves.strand_info[strandIndex];
+    unsigned int strandIndex = geometryData.curves.strand_i.at<unsigned int>(primitiveIndex);
+    uint2        strandInfo  = geometryData.curves.strand_info.at<uint2>(strandIndex);
     float        u           = ( primitiveIndex - strandInfo.x ) / (float)strandInfo.y;
     float3       base_color  = colors[0] * u + colors[strandIndex % 5 + 1] * ( 1.0f - u );
 

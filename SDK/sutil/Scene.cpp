@@ -1291,16 +1291,27 @@ void Scene::createPTXModule()
     m_pipeline_compile_options.usesMotionBlur            = true;
     m_pipeline_compile_options.traversableGraphFlags     = m_motion_blur ? OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY : 
                                                                            OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-    m_pipeline_compile_options.numPayloadValues          = whitted::NUM_PAYLOAD_VALUES;
+    
     m_pipeline_compile_options.numAttributeValues        = 2; // TODO
     m_pipeline_compile_options.exceptionFlags            = OPTIX_EXCEPTION_FLAG_NONE; // should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
     m_pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
 
     std::string module_name;
     if (m_trace_type == TRACE_TYPE_AMBIENT_OCCLUSION)
+    {
         module_name = "ao.cu";
+        m_pipeline_compile_options.numPayloadValues = ao::NUM_PAYLOAD_VALUES;
+    }
+    else if (m_trace_type == TRACE_TYPE_PATH_TRACING)
+    {
+        module_name = "path.cu";
+        m_pipeline_compile_options.numPayloadValues = path::NUM_PAYLOAD_VALUES;
+    }
     else
+    {
         module_name = "whitted.cu";
+        m_pipeline_compile_options.numPayloadValues = whitted::NUM_PAYLOAD_VALUES;
+    }
     const std::string ptx = getPtxString( nullptr, nullptr, module_name.c_str() );
 
     m_ptx_module  = {};
@@ -1340,6 +1351,8 @@ void Scene::createProgramGroups()
         else if (m_trace_type == TRACE_TYPE_WHITTED && m_sampling_type == SAMPLING_TYPE_MDAS_MOTION_BLUR)
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas_mb";
         else if (m_trace_type == TRACE_TYPE_AMBIENT_OCCLUSION && m_sampling_type == SAMPLING_TYPE_MDAS)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
+        else if (m_trace_type == TRACE_TYPE_PATH_TRACING && m_sampling_type == SAMPLING_TYPE_MDAS)
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
         else
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";

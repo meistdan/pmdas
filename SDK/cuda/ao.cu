@@ -67,8 +67,7 @@ extern "C" __global__ void __raygen__pinhole()
         const float2 d = 2.0f * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
             (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y)) - 1.0f;
         float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
-        float3 ray_origin = make_float3(0.0f);
-        ray_origin += eye;
+        float3 ray_origin = eye;
         ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
         //
@@ -114,18 +113,16 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     const float3 U = ao::params.U;
     const float3 V = ao::params.V;
     const float3 W = ao::params.W;
-    const int    linear_index = ao::params.sample_offset + launch_idx.y * launch_dims.x + launch_idx.x;
+    const int linear_index = ao::params.sample_offset + launch_idx.y * launch_dims.x + launch_idx.x;
 
     //
     // Generate camera ray
     //
     float4 sample = *reinterpret_cast<float4*>(&ao::params.sample_coordinates[ao::params.sample_dim * linear_index]);
-
     const float2 d = 2.0f * make_float2(sample.x / ao::params.scale.x,
         sample.y / ao::params.scale.y) - 1.0f;
     float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
-    float3 ray_origin = make_float3(0.0f);
-    ray_origin += eye;
+    float3 ray_origin = eye;
     ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
     //

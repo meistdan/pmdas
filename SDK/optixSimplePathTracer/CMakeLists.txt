@@ -26,9 +26,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-OPTIX_add_sample_executable( optixPathTracer target_name
-  optixPathTracer.cpp
-
+OPTIX_add_sample_executable( optixSimplePathTracer target_name
+  optixSimplePathTracer.cu
+  optixSimplePathTracer.cpp
+  optixSimplePathTracer.h
   OPTIONS -rdc true
   )
 

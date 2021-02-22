@@ -27,7 +27,7 @@
 //
 #include <optix.h>
 
-#include "optixPathTracer.h"
+#include "optixSimplePathTracer.h"
 #include "random.h"
 
 #include <sutil/vec_math.h>
