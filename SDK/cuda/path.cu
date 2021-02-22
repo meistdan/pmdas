@@ -139,7 +139,8 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     //
     // Generate camera ray
     //
-    float4 sample = *reinterpret_cast<float4*>(&path::params.sample_coordinates[path::params.sample_dim * linear_index]);
+    float2* sample_ptr = reinterpret_cast<float2*>(&path::params.sample_coordinates[path::params.sample_dim * linear_index]);
+    float2 sample = *sample_ptr;
     const float2 d = 2.0f * make_float2(sample.x / path::params.scale.x,
         sample.y / path::params.scale.y) - 1.0f;
     float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
@@ -160,8 +161,9 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     int depth = 0;
     for (;;)
     {
-        payload.r0 = sample.z;
-        payload.r1 = sample.w;
+        sample = *(++sample_ptr);
+        payload.r0 = sample.x;
+        payload.r1 = sample.y;
 
         traceRadiance(path::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset

@@ -1,4 +1,5 @@
 #include <sutil/vec_math.h>
+#include <optix_types.h>
 #include <cuda/helpers.h>
 #include <cuda/random.h>
 
@@ -16,6 +17,7 @@ namespace mdas {
 #define DYNAMIC_FETCH_THRESHOLD 20          // If fewer than this active, fetch new rays
 
 #define divCeil(a, b) (((a) + (b) - 1) / (b))
+#define roundUp(a, b) (divCeil(a, b) * (b))
 
     __device__ int g_warpCounter0;
     __device__ int g_warpCounter1;
@@ -48,36 +50,76 @@ namespace mdas {
         float scaleY,
         std::ofstream* log
     );
+    template KDTree<Point5>::KDTree(
+        int maxSamples,
+        int candidatesNum,
+        int bitsPerDim,
+        int extraImgBits,
+        float errorThreshold,
+        float scaleX,
+        float scaleY,
+        std::ofstream* log
+    );
+    template KDTree<Point6>::KDTree(
+        int maxSamples,
+        int candidatesNum,
+        int bitsPerDim,
+        int extraImgBits,
+        float errorThreshold,
+        float scaleX,
+        float scaleY,
+        std::ofstream* log
+    );
 
     template void KDTree<Point3>::InitialSampling(void);
     template void KDTree<Point4>::InitialSampling(void);
+    template void KDTree<Point5>::InitialSampling(void);
+    template void KDTree<Point6>::InitialSampling(void);
 
     template void KDTree<Point3>::Construct(void);
     template void KDTree<Point4>::Construct(void);
+    template void KDTree<Point5>::Construct(void);
+    template void KDTree<Point6>::Construct(void);
 
     template void KDTree<Point3>::UpdateIndices(void);
     template void KDTree<Point4>::UpdateIndices(void);
+    template void KDTree<Point5>::UpdateIndices(void);
+    template void KDTree<Point6>::UpdateIndices(void);
 
     template void KDTree<Point3>::ComputeErrors(void);
     template void KDTree<Point4>::ComputeErrors(void);
+    template void KDTree<Point5>::ComputeErrors(void);
+    template void KDTree<Point6>::ComputeErrors(void);
 
     template void KDTree<Point3>::AdaptiveSampling(void);
     template void KDTree<Point4>::AdaptiveSampling(void);
+    template void KDTree<Point5>::AdaptiveSampling(void);
+    template void KDTree<Point6>::AdaptiveSampling(void);
 
     template void KDTree<Point3>::Build(void);
     template void KDTree<Point4>::Build(void);
+    template void KDTree<Point5>::Build(void);
+    template void KDTree<Point6>::Build(void);
 
     template void KDTree<Point3>::SamplingPass(void);
     template void KDTree<Point4>::SamplingPass(void);
+    template void KDTree<Point5>::SamplingPass(void);
+    template void KDTree<Point6>::SamplingPass(void);
 
     template void KDTree<Point3>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
     template void KDTree<Point4>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDTree<Point5>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDTree<Point6>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
 
     template void KDTree<Point3>::SamplingDensity(float4* pixels, int width, int height);
     template void KDTree<Point4>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDTree<Point5>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDTree<Point6>::SamplingDensity(float4* pixels, int width, int height);
 
     template bool KDTree<Point3>::Validate(void);
     template bool KDTree<Point4>::Validate(void);
+    template bool KDTree<Point5>::Validate(void);
+    template bool KDTree<Point6>::Validate(void);
 
     float bitsToFloat(int val) {
         return *(float*)&val;
@@ -835,8 +877,8 @@ namespace mdas {
         log(log)
     {
         seeds.Resize(maxSamples);
-        sampleCoordinates.Resize(maxSamples);
-        sampleValues.Resize(maxSamples);
+        sampleCoordinates.Resize(roundUp(maxSamples, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT));
+        sampleValues.Resize(roundUp(maxSamples, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT));
         nodes.Resize(2 * maxSamples - 1);
         nodeBoxes.Resize(2 * maxSamples - 1);
         nodeErrors.Resize(2 * maxSamples - 1);

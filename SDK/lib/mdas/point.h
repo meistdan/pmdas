@@ -195,6 +195,8 @@ struct PointN {
 
 typedef PointN<3> Point3;
 typedef PointN<4> Point4;
+typedef PointN<5> Point5;
+typedef PointN<6> Point6;
 
 }  // namespace mdas
 

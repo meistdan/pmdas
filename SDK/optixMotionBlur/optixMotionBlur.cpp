@@ -88,7 +88,8 @@ int32_t                 width = 1920;
 int32_t                 height = 1080;
 
 // MDAS
-mdas::KDTree<mdas::Point3>* kdtree = nullptr;
+typedef mdas::Point3 Point;
+mdas::KDTree<Point>* kdtree = nullptr;
 
 // Denoiser
 sutil::Denoiser denoiser;
@@ -340,7 +341,7 @@ void initMdas(std::ofstream* log = nullptr)
     Environment::getInstance()->getIntValue("Mdas.extraImgBits", extraImgBits);
     Environment::getInstance()->getIntValue("Mdas.candidatesNum", candidatesNum);
 
-    kdtree = new mdas::KDTree<mdas::Point3>(
+    kdtree = new mdas::KDTree<Point>(
         max_samples,
         candidatesNum,
         bitsPerDim,
@@ -357,7 +358,7 @@ void initMdas(std::ofstream* log = nullptr)
     params.sample_values = kdtree->GetSampleValues().Data();
     params.sample_count = kdtree->GetNumberOfSamples();
     params.sample_offset = 0;
-    params.sample_dim = mdas::Point3::DIM;
+    params.sample_dim = Point::DIM;
 }
 
 
