@@ -97,7 +97,12 @@ public:
         Aabb                              world_aabb;
     };
 
-
+    SUTILAPI void setEnvironmentMap(cudaArray_t array, cudaTextureObject_t sampler) 
+    { 
+        m_environment_map = sampler; 
+        m_samplers.push_back(sampler);
+        m_images.push_back(array);
+    }
     SUTILAPI void addCamera  ( const Camera& camera            )    { m_cameras.push_back( camera );   }
     SUTILAPI void addMesh    ( std::shared_ptr<MeshGroup> mesh )    { m_meshes.push_back( mesh );      }
     SUTILAPI void addMaterial( const MaterialData::Pbr& mtl    )    { m_materials.push_back( mtl );    }
@@ -133,7 +138,8 @@ public:
     SUTILAPI const std::vector<cudaTextureObject_t>&   samplers() const             { return m_samplers;   }
     SUTILAPI const std::vector<CUdeviceptr>&           buffers() const              { return m_samplers;   }
     SUTILAPI const std::vector<std::shared_ptr<MeshGroup>>& meshes() const          { return m_meshes;     }
-    SUTILAPI const std::vector<cudaArray_t>&           images() const                { return m_images;     }
+    SUTILAPI const std::vector<cudaArray_t>&           images() const               { return m_images;     }
+    SUTILAPI const cudaTextureObject_t                 environment_map() const      { return m_environment_map; }
 
     SUTILAPI void remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf::Model& model, size_t mesh_offset);
 
@@ -157,6 +163,8 @@ private:
     std::vector<cudaArray_t>             m_images;
     sutil::Aabb                          m_scene_aabb;
 
+    cudaTextureObject_t                  m_environment_map          = 0;
+
     OptixDeviceContext                   m_context                  = 0;
     OptixShaderBindingTable              m_sbt                      = {};
     OptixPipelineCompileOptions          m_pipeline_compile_options = {};
@@ -177,6 +185,7 @@ private:
 };
 
 
+SUTILAPI void loadEnvironmentMap(const std::string& filename, Scene& scene);
 SUTILAPI void loadScene( const std::string& filename, Scene& scene );
 
 } // end namespace sutil

@@ -192,7 +192,27 @@ extern "C" __global__ void __raygen__pinhole_mdas()
 extern "C" __global__ void __miss__constant_radiance()
 {
     path::PayloadRadiance* payload = path::getPayload();
-    payload->radiance = path::params.miss_color;
+    if (path::params.environment_map != 0)
+    {
+        const float3 direction = normalize(optixGetWorldRayDirection());
+
+        // Y is up, swap x for yand z for x
+        float theta = atan2f(direction.x, direction.z);
+
+        // Wrap around full circle if negative
+        theta = theta < 0.0f ? theta + (2.0f * M_PI) : theta;
+        float phi = acosf(direction.y);
+
+        // Map theta and phi to u and v texturecoordinates in [0,1] x [0,1] range
+        float u = 1.0f - (theta / (2.0f * M_PI));
+        float v = phi / M_PI;
+
+        payload->radiance = make_float3(tex2D<float4>(path::params.environment_map, u, v));
+    }
+    else 
+    {
+        payload->radiance = path::params.miss_color;
+    }
     payload->done = true;
 }
 

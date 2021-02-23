@@ -77,6 +77,7 @@ struct LaunchParams
     int                      sample_count;
     int                      sample_dim;
 
+    cudaTextureObject_t      environment_map;
     BufferView               lights;
     float3                   miss_color;
     OptixTraversableHandle   handle;

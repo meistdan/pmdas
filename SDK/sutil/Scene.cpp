@@ -263,6 +263,61 @@ void processGLTFNode(
 } // end anon namespace
 
 
+void loadEnvironmentMap(const std::string& filename, Scene& scene)
+{
+    // Load image
+    ImageBuffer image = loadImage(filename.c_str(), 4);
+    assert(image.pixel_format == FLOAT4);
+
+    // Add image
+    int32_t pitch = image.width * sizeof(float4);
+    cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+
+    cudaArray_t cuda_array = nullptr;
+    CUDA_CHECK(cudaMallocArray(
+        &cuda_array,
+        &channel_desc,
+        image.width,
+        image.height
+    ));
+    CUDA_CHECK(cudaMemcpy2DToArray(
+        cuda_array,
+        0,     // X offset
+        0,     // Y offset
+        image.data,
+        pitch,
+        pitch,
+        image.height,
+        cudaMemcpyHostToDevice
+    ));
+
+    // Add sampler
+    cudaResourceDesc res_desc = {};
+    res_desc.resType = cudaResourceTypeArray;
+    res_desc.res.array.array = cuda_array;
+
+    cudaTextureDesc tex_desc = {};
+    tex_desc.addressMode[0] = cudaAddressModeWrap;
+    tex_desc.addressMode[1] = cudaAddressModeWrap;
+    tex_desc.filterMode = cudaFilterModeLinear;
+    tex_desc.readMode = cudaReadModeElementType;
+    tex_desc.normalizedCoords = 1;
+    tex_desc.maxAnisotropy = 1;
+    tex_desc.maxMipmapLevelClamp = 99;
+    tex_desc.minMipmapLevelClamp = 0;
+    tex_desc.mipmapFilterMode = cudaFilterModePoint;
+    tex_desc.borderColor[0] = 1.0f;
+    tex_desc.sRGB = 0; // TODO: glTF assumes sRGB for base_color -- handle in shader
+
+    // Create texture object
+    cudaTextureObject_t cuda_tex = 0;
+    CUDA_CHECK(cudaCreateTextureObject(&cuda_tex, &res_desc, &tex_desc, nullptr));
+
+    // Set environment map
+    scene.setEnvironmentMap(cuda_array, cuda_tex);
+}
+
+
 void loadScene( const std::string& filename, Scene& scene )
 {
     //scene.cleanup();
@@ -509,7 +564,7 @@ void Scene::addImage(
     else if( bits_per_component == 16 )
     {
         pitch        = width*num_components*sizeof(uint16_t);
-        channel_desc = cudaCreateChannelDesc<uchar4>();
+        channel_desc = cudaCreateChannelDesc<ushort4>();
     }
     else
     {
@@ -517,7 +572,7 @@ void Scene::addImage(
     }
 
 
-    cudaArray_t   cuda_array = nullptr;
+    cudaArray_t cuda_array = nullptr;
     CUDA_CHECK( cudaMallocArray(
                 &cuda_array,
                 &channel_desc,
@@ -550,14 +605,9 @@ void Scene::addImage(
     res_desc.res.array.array  = getImage( image_idx );
 
     cudaTextureDesc tex_desc     = {};
-    tex_desc.addressMode[0]      = address_s == GL_CLAMP_TO_EDGE   ? cudaAddressModeClamp  :
-                                   address_s == GL_MIRRORED_REPEAT ? cudaAddressModeMirror :
-                                                                     cudaAddressModeWrap;
-    tex_desc.addressMode[1]      = address_t == GL_CLAMP_TO_EDGE   ? cudaAddressModeClamp  :
-                                   address_t == GL_MIRRORED_REPEAT ? cudaAddressModeMirror :
-                                                                     cudaAddressModeWrap;
-    tex_desc.filterMode          = filter    == GL_NEAREST         ? cudaFilterModePoint   :
-                                                                     cudaFilterModeLinear;
+    tex_desc.addressMode[0]      = address_s;
+    tex_desc.addressMode[1]      = address_t;
+    tex_desc.filterMode          = filter;
     tex_desc.readMode            = cudaReadModeNormalizedFloat;
     tex_desc.normalizedCoords    = 1;
     tex_desc.maxAnisotropy       = 1;

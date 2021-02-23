@@ -130,6 +130,8 @@ protected:
         registerOption("Light.distant", OPT_VECTOR3);
         registerOption("Light.color", OPT_VECTOR3);
 
+        registerOption("EnvironmentMap.filename", OPT_STRING);
+
         registerOption("Model.filename", OPT_STRING);
         registerOption("Model.frame", OPT_FRAME);
         registerOption("Model.frame", OPT_FRAME);
@@ -328,6 +330,7 @@ void initLaunchParams(const sutil::Scene& scene) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(path::LaunchParams)));
 
     params.handle = scene.traversableHandle();
+    params.environment_map = scene.environment_map();
 }
 
 
@@ -571,6 +574,7 @@ int main(int argc, char* argv[])
     // Parse command line options
     //
     std::string outfile;
+    std::string envfile;
     std::vector<std::string> infiles;
     std::vector<Frame> frames;
 
@@ -604,6 +608,8 @@ int main(int argc, char* argv[])
 
     Environment::getInstance()->getStringValues("Model.filename", infiles);
     Environment::getInstance()->getFrameValues("Model.frame", frames);
+
+    Environment::getInstance()->getStringValue("EnvironmentMap.filename", envfile);
 
     if (infiles.empty())
     {
@@ -678,6 +684,8 @@ int main(int argc, char* argv[])
                 }
             }
         }
+        if (!envfile.empty())
+            sutil::loadEnvironmentMap(envfile, scene);
         scene.finalize();
 
         OPTIX_CHECK(optixInit()); // Need to initialize function table
