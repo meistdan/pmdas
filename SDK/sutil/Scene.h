@@ -186,7 +186,7 @@ private:
 
 
 SUTILAPI void loadEnvironmentMap(const std::string& filename, Scene& scene);
-SUTILAPI void loadScene( const std::string& filename, Scene& scene );
+SUTILAPI void loadScene( const std::string& filename, Scene& scene, bool emissive = false );
 
 } // end namespace sutil
 

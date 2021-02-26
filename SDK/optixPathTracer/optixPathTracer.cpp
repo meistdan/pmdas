@@ -135,6 +135,7 @@ protected:
         registerOption("Model.filename", OPT_STRING);
         registerOption("Model.frame", OPT_FRAME);
         registerOption("Model.frame", OPT_FRAME);
+        registerOption("Model.emissive", "0", OPT_BOOL);
     }
 
 public:
@@ -577,6 +578,7 @@ int main(int argc, char* argv[])
     std::string envfile;
     std::vector<std::string> infiles;
     std::vector<Frame> frames;
+    std::vector<bool> emissives;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -608,6 +610,7 @@ int main(int argc, char* argv[])
 
     Environment::getInstance()->getStringValues("Model.filename", infiles);
     Environment::getInstance()->getFrameValues("Model.frame", frames);
+    Environment::getInstance()->getBoolValues("Model.emissive", emissives);
 
     Environment::getInstance()->getStringValue("EnvironmentMap.filename", envfile);
 
@@ -652,7 +655,8 @@ int main(int argc, char* argv[])
         for (size_t i = 0; i < infiles.size(); ++i)
         {
             size_t mesh_offset = scene.meshes().size();
-            sutil::loadScene(infiles[i].c_str(), scene);
+            bool emissive = i < emissives.size() ? emissives[i] : false;
+            sutil::loadScene(infiles[i].c_str(), scene, emissive);
             if (i >= infiles.size() - begins)
             {
                 std::vector<Frame> frameset;

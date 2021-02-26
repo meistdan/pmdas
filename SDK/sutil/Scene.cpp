@@ -318,7 +318,7 @@ void loadEnvironmentMap(const std::string& filename, Scene& scene)
 }
 
 
-void loadScene( const std::string& filename, Scene& scene )
+void loadScene( const std::string& filename, Scene& scene, bool emissive )
 {
     //scene.cleanup();
     size_t material_offset = scene.materials().size();
@@ -412,6 +412,7 @@ void loadScene( const std::string& filename, Scene& scene )
             {
                 const tinygltf::ColorValue c = base_color_it->second.ColorFactor();
                 mtl.base_color = make_float4_from_double( c[0], c[1], c[2], c[3] );
+                if (emissive) mtl.base_color.w = -mtl.base_color.w;
                 std::cerr
                     << "\tBase color: ("
                     << mtl.base_color.x << ", "

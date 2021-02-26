@@ -264,14 +264,21 @@ extern "C" __global__ void __closesthit__radiance()
         N = normalize(NN.x * normalize(geom.dpdu) + NN.y * normalize(geom.dpdv) + NN.z * geom.N);
     }
     N = faceforward(N, V, N);
+    const float  N_dot_V = dot(N, V);
 
     path::PayloadRadiance* payload = path::getPayload();
-    payload->emitted = make_float3(0.0f);
+
+    if (!payload->countEmitted || opacity >= 0.0f)
+    {
+        payload->emitted = make_float3(0.0f);
+    }
+    else
+    {
+        payload->emitted = base_color;
+    }
 
     const float z1 = payload->r0;
     const float z2 = payload->r1;
-    
-    const float  N_dot_V = dot(N, V);
 
     if (opacity == 0.0f)
     {
@@ -291,7 +298,7 @@ extern "C" __global__ void __closesthit__radiance()
         payload->attenuation *= diff_color;
     }
     payload->origin = geom.P;
-    payload->countEmitted = false;
+    //payload->countEmitted = false;
 
     //
     // compute direct lighting
