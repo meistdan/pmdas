@@ -91,6 +91,15 @@ static __forceinline__ __device__ void cosine_sample_hemisphere(const float u1, 
     p.z = sqrtf(fmaxf(0.0f, 1.0f - p.x * p.x - p.y * p.y));
 }
 
+static __forceinline__ __device__ void cosine_sample_sphere(const float u1, const float u2, float3& p)
+{
+    float theta = 2.0f * M_PIf * u1;
+    float phi = M_PIf * u2;
+    p.x = sinf(phi) * cosf(theta);
+    p.y = sinf(phi) * sinf(theta);
+    p.z = cosf(phi);
+}
+
 
 //------------------------------------------------------------------------------
 //

@@ -230,12 +230,12 @@ extern "C" __global__ void __closesthit__radiance()
     // Retrieve material data
     //
     float3 base_color = make_float3( hit_group_data->material_data.pbr.base_color );
-    float smoothness = hit_group_data->material_data.pbr.base_color.w;
+    float opacity = hit_group_data->material_data.pbr.base_color.w;
     if (hit_group_data->material_data.pbr.base_color_tex)
     {
         float4 tmp = tex2D<float4>(hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y);
         base_color *= path::linearize(make_float3(tmp));
-        smoothness = tmp.w;
+        opacity = tmp.w;
     }
 
     float  metallic  = hit_group_data->material_data.pbr.metallic;
@@ -272,8 +272,16 @@ extern "C" __global__ void __closesthit__radiance()
     const float z2 = payload->r1;
     
     const float  N_dot_V = dot(N, V);
-    bool mirror = metallic == 1.0f && smoothness == 1.0f;
-    if (!mirror)
+
+    if (opacity == 0.0f)
+    {
+        payload->direction = -V;
+    }
+    else if (metallic == 1.0f)
+    {
+        payload->direction = normalize(-V + (2.0f * N_dot_V) * N);
+    }
+    else
     {
         float3 w_in;
         path::cosine_sample_hemisphere(z1, z2, w_in);
@@ -281,10 +289,6 @@ extern "C" __global__ void __closesthit__radiance()
         onb.inverse_transform(w_in);
         payload->direction = w_in;
         payload->attenuation *= diff_color;
-    }
-    else
-    {
-        payload->direction = normalize(-V + (2.0f * N_dot_V) * N);
     }
     payload->origin = geom.P;
     payload->countEmitted = false;
@@ -325,7 +329,7 @@ extern "C" __global__ void __closesthit__radiance()
 
                     const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
-                    result += light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
+                    result += opacity * light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
                 }
             }
         }
