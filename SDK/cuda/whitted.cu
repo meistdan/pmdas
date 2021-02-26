@@ -63,18 +63,14 @@ extern "C" __global__ void __raygen__pinhole()
     int j = whitted::params.samples_per_launch;
     do
     {
-
-        // The center of each pixel is at fraction (0.5,0.5)
-        const float2 subpixel_jitter =
-            /*subframe_index == 0 ? make_float2(0.5f, 0.5f) : */make_float2(rnd(seed), rnd(seed));
-
+        const float2 subpixel_jitter = make_float2(rnd(seed), rnd(seed));
         const float2 d =
             2.0f
             * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
                 (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y))
             - 1.0f;
-        float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
-        float3 ray_origin = make_float3(0.0f);
+        float3 ray_direction = normalize(d.x * U + d.y * V + W);
+        float3 ray_origin = eye;
 
         //
         // Depth of field
@@ -104,18 +100,28 @@ extern "C" __global__ void __raygen__pinhole()
                 lens = whitted::params.lens_radius * r * make_float2(cosf(theta), sinf(theta));
             }
 
+            float ul = length(U);
+            float vl = length(V);
+            float wl = length(W);
+
+            const float3 u = U / ul;
+            const float3 v = V / vl;
+            const float3 w = W / wl;
+
             // Compute point on plane of focus
+            ray_direction = normalize(make_float3(ul * d.x, vl * d.y, wl));
             float ft = whitted::params.focal_distance / ray_direction.z;
             float3 focus = ft * ray_direction;
 
             // Update ray for effect of lens
-            ray_origin = make_float3(lens.x, lens.y, 0);
-            ray_direction = normalize(focus - ray_origin);
+            ray_origin = make_float3(lens.x, lens.y, 0.0f);
+            ray_direction = focus - ray_origin;
+            
+            // Transform to world coordinates
+            ray_origin = ray_origin.x * u + ray_origin.y * v + ray_origin.z * w + eye;
+            ray_direction = normalize(ray_direction.x * u + ray_direction.y * v + ray_direction.z * w);
+            
         }
-
-        // Transform
-        ray_origin += eye;
-        ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
         //
         // Trace camera ray
@@ -169,8 +175,8 @@ extern "C" __global__ void __raygen__pinhole_mdas_dof()
     float4 sample = *reinterpret_cast<float4*>(&whitted::params.sample_coordinates[whitted::params.sample_dim * linear_index]);
     const float2 d = 2.0f * make_float2(sample.x / whitted::params.scale.x,  
                                         sample.y / whitted::params.scale.y) - 1.0f;
-    float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
-    float3 ray_origin = make_float3(0.0f);
+    float3 ray_direction = normalize(d.x * U + d.y * V + W);
+    float3 ray_origin = eye;
 
     //
     // Depth of field
@@ -200,18 +206,27 @@ extern "C" __global__ void __raygen__pinhole_mdas_dof()
             lens = whitted::params.lens_radius * r * make_float2(cosf(theta), sinf(theta));
         }
 
+        float ul = length(U);
+        float vl = length(V);
+        float wl = length(W);
+
+        const float3 u = U / ul;
+        const float3 v = V / vl;
+        const float3 w = W / wl;
+
         // Compute point on plane of focus
+        ray_direction = normalize(make_float3(ul * d.x, vl * d.y, wl));
         float ft = whitted::params.focal_distance / ray_direction.z;
         float3 focus = ft * ray_direction;
 
         // Update ray for effect of lens
-        ray_origin = make_float3(lens.x, lens.y, 0);
-        ray_direction = normalize(focus - ray_origin);
-    }
+        ray_origin = make_float3(lens.x, lens.y, 0.0f);
+        ray_direction = focus - ray_origin;
 
-    // Transform
-    ray_origin += eye;
-    ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
+        // Transform to world coordinates
+        ray_origin = ray_origin.x * u + ray_origin.y * v + ray_origin.z * w + eye;
+        ray_direction = normalize(ray_direction.x * u + ray_direction.y * v + ray_direction.z * w);
+    }
 
     //
     // Trace camera ray

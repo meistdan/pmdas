@@ -70,9 +70,8 @@ extern "C" __global__ void __raygen__pinhole()
             * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
                 (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y))
             - 1.0f;
-        float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
+        float3 ray_direction = normalize(d.x * U + d.y * V + W);
         float3 ray_origin = eye;
-        ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
         //
         // Trace camera ray
@@ -143,9 +142,8 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     float2 sample = *sample_ptr;
     const float2 d = 2.0f * make_float2(sample.x / path::params.scale.x,
         sample.y / path::params.scale.y) - 1.0f;
-    float3 ray_direction = normalize(make_float3(d.x, d.y, 1.0f));
+    float3 ray_direction = normalize(d.x * U + d.y * V + W);
     float3 ray_origin = eye;
-    ray_direction = normalize(ray_direction.x * U + ray_direction.y * V + ray_direction.z * W);
 
     //
     // Trace camera ray
@@ -232,9 +230,13 @@ extern "C" __global__ void __closesthit__radiance()
     // Retrieve material data
     //
     float3 base_color = make_float3( hit_group_data->material_data.pbr.base_color );
-    if( hit_group_data->material_data.pbr.base_color_tex )
-        base_color *= path::linearize(
-            make_float3( tex2D<float4>( hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y ) ) );
+    float smoothness = hit_group_data->material_data.pbr.base_color.w;
+    if (hit_group_data->material_data.pbr.base_color_tex)
+    {
+        float4 tmp = tex2D<float4>(hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y);
+        base_color *= path::linearize(make_float3(tmp));
+        smoothness = tmp.w;
+    }
 
     float  metallic  = hit_group_data->material_data.pbr.metallic;
     float  roughness = hit_group_data->material_data.pbr.roughness;
@@ -254,12 +256,14 @@ extern "C" __global__ void __closesthit__radiance()
     const float  alpha      = roughness * roughness;
 
     float3 N = geom.N;
+    const float3 V = -normalize(optixGetWorldRayDirection());
     if (hit_group_data->material_data.pbr.normal_tex)
     {
         const float4 NN =
             2.0f * tex2D<float4>(hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y) - make_float4(1.0f);
         N = normalize(NN.x * normalize(geom.dpdu) + NN.y * normalize(geom.dpdv) + NN.z * geom.N);
     }
+    N = faceforward(N, V, N);
 
     path::PayloadRadiance* payload = path::getPayload();
     payload->emitted = make_float3(0.0f);
@@ -267,14 +271,22 @@ extern "C" __global__ void __closesthit__radiance()
     const float z1 = payload->r0;
     const float z2 = payload->r1;
     
-    float3 w_in;
-    path::cosine_sample_hemisphere(z1, z2, w_in);
-    path::Onb onb(N);
-    onb.inverse_transform(w_in);
-    
-    payload->direction = w_in;
+    const float  N_dot_V = dot(N, V);
+    bool mirror = metallic == 1.0f && smoothness == 1.0f;
+    if (!mirror)
+    {
+        float3 w_in;
+        path::cosine_sample_hemisphere(z1, z2, w_in);
+        path::Onb onb(N);
+        onb.inverse_transform(w_in);
+        payload->direction = w_in;
+        payload->attenuation *= diff_color;
+    }
+    else
+    {
+        payload->direction = normalize(-V + (2.0f * N_dot_V) * N);
+    }
     payload->origin = geom.P;
-    payload->attenuation *= diff_color;
     payload->countEmitted = false;
 
     //
@@ -295,14 +307,12 @@ extern "C" __global__ void __closesthit__radiance()
             const float  L_dist  = light.type == Light::Type::POINT ? 
                                         length( light.point.position - geom.P ) :
                                         2.0f * light.distant.radius;
-            const float3 V       = -normalize( optixGetWorldRayDirection() );
             const float3 H       = normalize( L + V );
             const float  N_dot_L = dot( N, L );
-            const float  N_dot_V = dot( N, V );
             const float  N_dot_H = dot( N, H );
             const float  V_dot_H = dot( V, H );
 
-            if( N_dot_L > 0.0f && N_dot_V > 0.0f )
+            if( N_dot_L > 0.0f )
             {
                 const float tmin     = 0.001f;           // TODO
                 const float tmax     = L_dist - 0.001f;  // TODO
@@ -315,7 +325,6 @@ extern "C" __global__ void __closesthit__radiance()
 
                     const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
-
                     result += light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
                 }
             }

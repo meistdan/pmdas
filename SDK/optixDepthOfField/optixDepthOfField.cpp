@@ -218,25 +218,25 @@ static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, i
     }
     else if (key == GLFW_KEY_W)
     {
-        camera.setFocalDistance(camera.focalDistance() + 0.5f);
+        camera.setFocalDistance(camera.focalDistance() + 0.001f);
         camera_changed = true;
         std::cout << "Focal distance " << camera.focalDistance() << std::endl;
     }
     else if (key == GLFW_KEY_S)
     {
-        camera.setFocalDistance(camera.focalDistance() - 0.5f);
+        camera.setFocalDistance(camera.focalDistance() - 0.001f);
         camera_changed = true;
         std::cout << "Focal distance " << camera.focalDistance() << std::endl;
     }
     else if (key == GLFW_KEY_A)
     {
-        camera.setLensRadius(camera.lensRadius() - 0.002f);
+        camera.setLensRadius(camera.lensRadius() - 0.0001f);
         camera_changed = true;
         std::cout << "Lens radius " << camera.lensRadius() << std::endl;
     }
     else if (key == GLFW_KEY_D)
     {
-        camera.setLensRadius(camera.lensRadius() + 0.002f);
+        camera.setLensRadius(camera.lensRadius() + 0.0001f);
         camera_changed = true;
         std::cout << "Lens radius " << camera.lensRadius() << std::endl;
     }
