@@ -80,7 +80,6 @@ extern "C" __global__ void __raygen__pinhole()
         payload.emitted = make_float3(0.f);
         payload.radiance = make_float3(0.f);
         payload.attenuation = make_float3(1.f);
-        payload.countEmitted = true;
         payload.done = false;
 
         int depth = 0;
@@ -152,7 +151,6 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     payload.emitted = make_float3(0.f);
     payload.radiance = make_float3(0.f);
     payload.attenuation = make_float3(1.f);
-    payload.countEmitted = true;
     payload.done = false;
 
     float3 result = make_float3(0.0f);
@@ -268,14 +266,8 @@ extern "C" __global__ void __closesthit__radiance()
 
     path::PayloadRadiance* payload = path::getPayload();
 
-    if (!payload->countEmitted || opacity >= 0.0f)
-    {
-        payload->emitted = make_float3(0.0f);
-    }
-    else
-    {
-        payload->emitted = base_color;
-    }
+    payload->emitted = make_float3(0.0f);
+    if (opacity < 0.0f) payload->emitted = base_color;
 
     const float z1 = payload->r0;
     const float z2 = payload->r1;
@@ -298,7 +290,6 @@ extern "C" __global__ void __closesthit__radiance()
         payload->attenuation *= diff_color;
     }
     payload->origin = geom.P;
-    //payload->countEmitted = false;
 
     //
     // compute direct lighting

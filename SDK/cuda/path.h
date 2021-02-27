@@ -91,10 +91,10 @@ struct PayloadRadiance
     float3       attenuation;
     float3       origin;
     float3       direction;
-    int          countEmitted;
     int          done;
     float        r0;
     float        r1;
+    int          pad;
 };
 
 
