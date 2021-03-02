@@ -263,7 +263,11 @@ extern "C" __global__ void __closesthit__radiance()
     path::PayloadRadiance* payload = path::getPayload();
 
     payload->radiance = make_float3(0.0f);
-    if (opacity < 0.0f) payload->radiance = 300.0f * base_color;
+    if (opacity < 0.0f)
+    {
+        opacity = -opacity;
+        payload->radiance = 2000.0f * base_color;
+    }
 
     const float z1 = payload->r0;
     const float z2 = payload->r1;
@@ -275,15 +279,29 @@ extern "C" __global__ void __closesthit__radiance()
     else if (metallic == 1.0f)
     {
         payload->direction = normalize(-V + (2.0f * N_dot_V) * N);
+        payload->attenuation *= base_color;
     }
     else
     {
-        float3 w_in;
-        path::cosine_sample_hemisphere(z1, z2, w_in);
+        // Sample L
+        float3 L = path::cosine_sample_hemisphere(z1, z2);
         path::Onb onb(N);
-        onb.inverse_transform(w_in);
-        payload->direction = w_in;
-        payload->attenuation *= diff_color;
+        onb.inverse_transform(L);
+
+        // Eval BRDF
+        const float3 H = normalize(L + V);
+        const float  V_dot_H = dot(V, H);
+        const float  N_dot_L = dot(N, L);
+        const float  N_dot_H = dot(N, H);
+        const float3 F = path::schlick(spec_color, V_dot_H);
+        const float  G_vis = path::vis(N_dot_L, N_dot_V, alpha);
+        const float  D = path::ggxNormal(N_dot_H, alpha);
+        
+        const float3 diff = (1.0f - F) * diff_color / M_PIf;
+        const float3 spec = F * G_vis * D;
+
+        payload->direction = L;
+        payload->attenuation *= opacity * N_dot_L * (diff + spec);
     }
     payload->origin = geom.P;
 

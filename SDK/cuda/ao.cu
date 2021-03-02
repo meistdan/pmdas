@@ -83,7 +83,7 @@ extern "C" __global__ void __raygen__pinhole()
             &payload);
 
         // Add result
-        result += payload.occluded == 0 ? 1.0f / ao::params.samples_per_launch : 0.0f;
+        result += payload.occluded == 0 ? 1.0f : 0.0f;
 
     } while (--j);
 

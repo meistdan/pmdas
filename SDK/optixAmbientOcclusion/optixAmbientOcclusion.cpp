@@ -130,6 +130,8 @@ protected:
         registerOption("Light.distant", OPT_VECTOR3);
         registerOption("Light.color", OPT_VECTOR3);
 
+        registerOption("EnvironmentMap.filename", OPT_STRING);
+
         registerOption("Model.filename", OPT_STRING);
         registerOption("Model.frame", OPT_FRAME);
         registerOption("Model.frame", OPT_FRAME);
