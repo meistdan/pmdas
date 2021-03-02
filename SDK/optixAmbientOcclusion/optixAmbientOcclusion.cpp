@@ -119,8 +119,7 @@ protected:
         registerOption("Sampler.samples", "1", OPT_FLOAT);
         registerOption("Sampler.mdas", "0", OPT_BOOL);
 
-        registerOption("Mdas.scaleX", "1.0", OPT_FLOAT);
-        registerOption("Mdas.scaleY", "1.0", OPT_FLOAT);
+        registerOption("Mdas.scaleFactor", "1.0", OPT_FLOAT);
         registerOption("Mdas.errorThreshold", "0.025", OPT_FLOAT);
         registerOption("Mdas.bitsPerDim", "0", OPT_INT);
         registerOption("Mdas.extraImgBits", "8", OPT_INT);
@@ -264,12 +263,11 @@ void initLaunchParams(const sutil::Scene& scene) {
 
 void initMdas(std::ofstream* log = nullptr)
 {
-    float errorThreshold, scaleX, scaleY;
+    float errorThreshold, scaleFactor;
     int bitsPerDim, extraImgBits, candidatesNum;
 
     Environment::getInstance()->getFloatValue("Mdas.errorThreshold", errorThreshold);
-    Environment::getInstance()->getFloatValue("Mdas.scaleX", scaleX);
-    Environment::getInstance()->getFloatValue("Mdas.scaleY", scaleY);
+    Environment::getInstance()->getFloatValue("Mdas.scaleFactor", scaleFactor);
     Environment::getInstance()->getIntValue("Mdas.bitsPerDim", bitsPerDim);
     Environment::getInstance()->getIntValue("Mdas.extraImgBits", extraImgBits);
     Environment::getInstance()->getIntValue("Mdas.candidatesNum", candidatesNum);
@@ -280,8 +278,8 @@ void initMdas(std::ofstream* log = nullptr)
         bitsPerDim,
         extraImgBits,
         errorThreshold,
-        scaleX,
-        scaleY,
+        scaleFactor * width,
+        scaleFactor * height,
         log
         );
     kdtree->Build();
@@ -694,6 +692,9 @@ int main(int argc, char* argv[])
             handleResize(output_buffer, output_buffer_bytes);
 
             std::ofstream log(outfile + ".log");
+            log << "WIDTH\n" << width << std::endl;
+            log << "HEIGHT\n" << height << std::endl;
+
             if (mdas_on) initMdas(&log);
 
             auto start = std::chrono::steady_clock::now();

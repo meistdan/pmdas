@@ -2,27 +2,34 @@ import os
 import cv2
 import numpy as np
 
-scene_name = "Bistro"
-
 home_drive = "C:/Users/meist/projects"
-base_dir = home_drive + "/optix/SDK/data/" + scene_name + "/"
+base_dir = home_drive + "/optix/SDK/data/"
 
-# output dir
-out_dir = os.path.join(base_dir, "mdas")
+out_dir = os.path.join(base_dir, "test")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
-os.chdir(base_dir)
+os.chdir(out_dir)
 
 # table file
 table_filename = os.path.join(out_dir, "table.csv")
 if os.path.exists(table_filename):
     os.remove(table_filename)
 
-width = 1920
-height = 1080
+testing_passes = 5
 
-testing_passes = 20
-spp = [0.25, 0.5, 1, 2, 4]
+scenes = ["pool", "chess"]
+bins = ["optixMotionBlur.exe", "optixDepthOfField.exe"]
+ref_spps = [1024, 1024]
+scene_indices = [0, 1]
+
+spps = [0.25, 0.5, 1, 2, 4]
+extra_img_bits = [8, 8, 9, 9]
+morton_bits = [0, 1, 0, 1]
+scale_factors = [0.25, 0.5, 1.0]
+error_thresholds = [0.01, 0.025, 0.05]
+
+assert(len(morton_bits) == len(extra_img_bits))
+bits_num = len(morton_bits)
 
 p = "%.3f"
 
@@ -49,12 +56,17 @@ def get_values(key, filename):
     return res
 
 
-def run(spp, mdas):
+def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas):
 
     # test name
-    test_name = scene_name
+    scene = scenes[scene_index]
+    test_name = scene
     if mdas:
         test_name += "-mdas"
+        test_name += "-mb-" + str(morton_bit)
+        test_name += "-eib-" + str(extra_img_bit)
+        test_name += "-sf-" + str(scale_factor)
+        test_name += "-et-" + str(error_threshold)
     test_name += "-spp-" + str(spp)
 
     table_file = open(os.path.join(out_dir, table_filename), "a")
@@ -86,6 +98,8 @@ def run(spp, mdas):
         # parse
         print(test_name_pass)
 
+        width = get_values("WIDTH", log_filename)[0]
+        height = get_values("HEIGHT", log_filename)[0]
         if mdas:
             total_samples += sum(get_values("TOTAL SAMPLES", log_filename))
         else:
@@ -169,16 +183,24 @@ table_file.write(", mse (denoised)")
 table_file.write("\n")
 table_file.close()
 
-# ref test name
-ref_test_name = scene_name
-ref_test_name += "-reference"
-ref_filename = ref_test_name
-ref_filename = os.path.join(out_dir, ref_test_name + ".exr")
-ref_image = read_image(ref_filename)
+# scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas
+for scene_index in scene_indices:
 
-for s in spp:
-    if s >= 1:
-        run(s, False)
+    # ref test name
+    ref_test_name = scenes[scene_index]
+    ref_test_name += "-reference"
+    ref_filename = ref_test_name
+    ref_filename = os.path.join(out_dir, ref_test_name + ".exr")
+    ref_image = read_image(ref_filename)
 
-for s in spp:
-    run(s, True)
+    for spp in spps:
+        if spp >= 1:
+            run(scene_index, spp, 0, 0, 0, 0, False)
+
+    for spp in spps:
+        for scale_factor in scale_factors:
+            for error_threshold in error_thresholds:
+                for bit_index in range(bits_num):
+                    morton_bit = morton_bits[bit_index]
+                    extra_img_bit = extra_img_bits[bit_index]
+                    run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)

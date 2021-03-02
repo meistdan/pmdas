@@ -342,12 +342,14 @@ extern "C" __global__ void __closesthit__radiance()
     //
 
     float3 N = geom.N;
+    const float3 V = -normalize(optixGetWorldRayDirection());
     if( hit_group_data->material_data.pbr.normal_tex )
     {
         const float4 NN =
             2.0f * tex2D<float4>( hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y ) - make_float4( 1.0f );
         N = normalize( NN.x * normalize( geom.dpdu ) + NN.y * normalize( geom.dpdv ) + NN.z * geom.N );
     }
+    N = faceforward(N, V, N);
 
     float3 result = make_float3( 0.0f );
 
@@ -363,7 +365,6 @@ extern "C" __global__ void __closesthit__radiance()
             const float  L_dist  = light.type == Light::Type::POINT ? 
                                         length( light.point.position - geom.P ) :
                                         2.0f * light.distant.radius;
-            const float3 V       = -normalize( optixGetWorldRayDirection() );
             const float3 H       = normalize( L + V );
             const float  N_dot_L = dot( N, L );
             const float  N_dot_V = dot( N, V );
