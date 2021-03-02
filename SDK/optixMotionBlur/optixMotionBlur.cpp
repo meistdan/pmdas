@@ -256,12 +256,12 @@ void initLaunchParams(const sutil::Scene& scene) {
 
     // Parse lights
     std::vector<Light> lights;
-    std::vector<float3> pointLights;
-    std::vector<float3> distantLights;
-    std::vector<float3> lightColors;
-    Environment::getInstance()->getVector3Values("Light.point", pointLights);
-    Environment::getInstance()->getVector3Values("Light.distant", distantLights);
-    Environment::getInstance()->getVector3Values("Light.color", lightColors);
+    std::vector<float3> point_lights;
+    std::vector<float3> distant_lights;
+    std::vector<float3> light_colors;
+    Environment::getInstance()->getVector3Values("Light.point", point_lights);
+    Environment::getInstance()->getVector3Values("Light.distant", distant_lights);
+    Environment::getInstance()->getVector3Values("Light.color", light_colors);
 
     // Ambient light
     Light light;
@@ -270,29 +270,29 @@ void initLaunchParams(const sutil::Scene& scene) {
     lights.push_back(light);
 
     // Point lights
-    for (int i = 0; i < pointLights.size(); ++i)
+    for (int i = 0; i < point_lights.size(); ++i)
     {
         light.type = Light::Type::POINT;
-        light.point.color = i < lightColors.size() ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.point.color = i < light_colors.size() ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.point.intensity = 1.0f;
-        light.point.position = pointLights[i];
+        light.point.position = point_lights[i];
         lights.push_back(light);
     }
 
     // Distant lights
-    for (int i = 0; i < distantLights.size(); ++i)
+    for (int i = 0; i < distant_lights.size(); ++i)
     {
         light.type = Light::Type::DISTANT;
-        light.distant.color = pointLights.size() + i < lightColors.size()
-            ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.distant.color = point_lights.size() + i < light_colors.size()
+            ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.distant.intensity = 1.0f;
-        light.distant.direction = normalize(distantLights[i]);
+        light.distant.direction = normalize(distant_lights[i]);
         light.distant.radius = length(scene.aabb().m_max - scene.aabb().m_min) * 0.5f;
         lights.push_back(light);
     }
 
     // No lights => use default lights
-    if (pointLights.empty() && distantLights.empty())
+    if (point_lights.empty() && distant_lights.empty())
     {
         const float loffset = scene.aabb().maxExtent();
         light.type = Light::Type::POINT;

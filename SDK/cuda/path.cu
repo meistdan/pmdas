@@ -77,7 +77,6 @@ extern "C" __global__ void __raygen__pinhole()
         // Trace camera ray
         //
         path::PayloadRadiance payload;
-        payload.emitted = make_float3(0.f);
         payload.radiance = make_float3(0.f);
         payload.attenuation = make_float3(1.f);
         payload.done = false;
@@ -93,7 +92,6 @@ extern "C" __global__ void __raygen__pinhole()
                 1e16f,  // tmax
                 &payload);
 
-            result += payload.emitted;
             result += payload.radiance * payload.attenuation;
 
             if (payload.done || depth >= path::params.max_depth)
@@ -148,7 +146,6 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     // Trace camera ray
     //
     path::PayloadRadiance payload;
-    payload.emitted = make_float3(0.f);
     payload.radiance = make_float3(0.f);
     payload.attenuation = make_float3(1.f);
     payload.done = false;
@@ -166,7 +163,6 @@ extern "C" __global__ void __raygen__pinhole_mdas()
             1e16f,  // tmax
             &payload);
 
-        result += payload.emitted;
         result += payload.radiance * payload.attenuation;
 
         if (payload.done || depth >= path::params.max_depth)
@@ -266,8 +262,8 @@ extern "C" __global__ void __closesthit__radiance()
 
     path::PayloadRadiance* payload = path::getPayload();
 
-    payload->emitted = make_float3(0.0f);
-    if (opacity < 0.0f) payload->emitted = base_color;
+    payload->radiance = make_float3(0.0f);
+    if (opacity < 0.0f) payload->radiance = 300.0f * base_color;
 
     const float z1 = payload->r0;
     const float z2 = payload->r1;
@@ -294,8 +290,6 @@ extern "C" __global__ void __closesthit__radiance()
     //
     // compute direct lighting
     //
-
-    float3 result = make_float3( 0.0f );
 
     for( int i = 0; i < path::params.lights.count; ++i )
     {
@@ -327,11 +321,10 @@ extern "C" __global__ void __closesthit__radiance()
 
                     const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
-                    result += opacity * light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
+                    payload->radiance += opacity * light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
                 }
             }
         }
     }
 
-    payload->radiance = result;
 }

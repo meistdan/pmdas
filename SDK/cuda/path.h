@@ -86,7 +86,6 @@ struct LaunchParams
 
 struct PayloadRadiance
 {
-    float3       emitted;
     float3       radiance;
     float3       attenuation;
     float3       origin;
@@ -94,7 +93,7 @@ struct PayloadRadiance
     int          done;
     float        r0;
     float        r1;
-    int          pad;
+    int4          pad;
 };
 
 

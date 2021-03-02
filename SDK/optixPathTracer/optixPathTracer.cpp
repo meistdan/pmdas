@@ -128,6 +128,7 @@ protected:
         registerOption("Light.point", OPT_VECTOR3);
         registerOption("Light.distant", OPT_VECTOR3);
         registerOption("Light.color", OPT_VECTOR3);
+        registerOption("Light.background", "1.0 1.0 1.0", OPT_VECTOR3);
 
         registerOption("EnvironmentMap.filename", OPT_STRING);
 
@@ -260,54 +261,47 @@ void initLaunchParams(const sutil::Scene& scene) {
 
     // Parse lights
     std::vector<Light> lights;
-    std::vector<float3> pointLights;
-    std::vector<float3> distantLights;
-    std::vector<float3> lightColors;
-    Environment::getInstance()->getVector3Values("Light.point", pointLights);
-    Environment::getInstance()->getVector3Values("Light.distant", distantLights);
-    Environment::getInstance()->getVector3Values("Light.color", lightColors);
+    std::vector<float3> point_lights;
+    std::vector<float3> distant_lights;
+    std::vector<float3> light_colors;
+    float3 background_color;
+    Environment::getInstance()->getVector3Values("Light.point", point_lights);
+    Environment::getInstance()->getVector3Values("Light.distant", distant_lights);
+    Environment::getInstance()->getVector3Values("Light.color", light_colors);
+    Environment::getInstance()->getVector3Value("Light.background", background_color);
     
-    // Ambient light
-    Light light;
-    light.type = Light::Type::AMBIENT;
-    light.ambient.color = make_float3(0.35f, 0.35f, 0.35f);
-    lights.push_back(light);
-
     // Point lights
-    for (int i = 0; i < pointLights.size(); ++i) 
+    Light light;
+    for (int i = 0; i < point_lights.size(); ++i) 
     {
         light.type = Light::Type::POINT;
-        light.point.color = i < lightColors.size() ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.point.color = i < light_colors.size() ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.point.intensity = 5.0f;
-        light.point.position = pointLights[i];
+        light.point.position = point_lights[i];
         lights.push_back(light);
     }
 
     // Distant lights
-    for (int i = 0; i < distantLights.size(); ++i) 
+    for (int i = 0; i < distant_lights.size(); ++i) 
     {
         light.type = Light::Type::DISTANT;
-        light.distant.color = pointLights.size() + i < lightColors.size()
-            ? lightColors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.distant.color = point_lights.size() + i < light_colors.size()
+            ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.distant.intensity = 1.0f;
-        light.distant.direction = normalize(distantLights[i]);
+        light.distant.direction = normalize(distant_lights[i]);
         light.distant.radius = length(scene.aabb().m_max - scene.aabb().m_min) * 0.5f;
         lights.push_back(light);
     }
 
-    // No lights => use default lights
-    if (pointLights.empty() && distantLights.empty())
+    // No lights => dummy light
+    if (point_lights.empty() && distant_lights.empty())
     {
         const float loffset = scene.aabb().maxExtent();
         light.type = Light::Type::POINT;
-        light.point.color = { 1.0f, 1.0f, 0.8f };
-        light.point.intensity = 5.0f;
-        light.point.position = scene.aabb().center() + make_float3(loffset);
+        light.point.color = { 0.0f, 0.0f, 0.0f };
+        light.point.intensity = 0.0f;
+        light.point.position = { 0.0f, 0.0f, 0.0f };
         lights.push_back(light);
-        light.type = Light::Type::POINT;
-        light.point.color = { 0.8f, 0.8f, 1.0f };
-        light.point.intensity = 3.0f;
-        light.point.position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
         lights.push_back(light);
     }
 
@@ -324,8 +318,8 @@ void initLaunchParams(const sutil::Scene& scene) {
     ));
 
     params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
-    params.miss_color = make_float3(1.0f);
-    params.max_depth = 3;
+    params.miss_color = background_color;
+    params.max_depth = MAX_DEPTH;
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(path::LaunchParams)));
 

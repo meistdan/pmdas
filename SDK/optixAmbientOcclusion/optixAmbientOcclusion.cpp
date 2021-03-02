@@ -80,7 +80,8 @@ int32_t           mouse_button = -1;
 
 int32_t           max_samples = 30000000;
 float             samples_per_launch = 1;
-float             ao_radius = 200.0f;
+float             ao_radius_factor = 0.1f;
+float             scene_extent = 1.0f;
 bool              mdas_on = false;
 
 ao::LaunchParams* d_params = nullptr;
@@ -214,6 +215,18 @@ static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, i
             glfwSetWindowShouldClose(window, true);
         }
     }
+    else if (key == GLFW_KEY_W)
+    {
+        ao_radius_factor += 0.01f;
+        camera_changed = true;
+        std::cout << "AO radius factor " << ao_radius_factor << std::endl;
+    }
+    else if (key == GLFW_KEY_S)
+    {
+        ao_radius_factor -= 0.01f;
+        camera_changed = true;
+        std::cout << "AO radius factor " << ao_radius_factor << std::endl;
+    }
     else if (key == GLFW_KEY_C)
     {
         std::cout << "Eye " << camera.eye().x << " " << camera.eye().y << " " << camera.eye().z << std::endl;
@@ -252,10 +265,11 @@ void initLaunchParams(const sutil::Scene& scene) {
         reinterpret_cast<void**>(&params.accum_buffer),
         width * height * sizeof(float4)
     ));
+    scene_extent = scene.aabb().maxExtent();
     params.frame_buffer = nullptr; // Will be set when output buffer is mapped
     params.subframe_index = 0u;
     params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
-    params.radius = ao_radius;
+    params.radius = ao_radius_factor * scene_extent;
     params.handle = scene.traversableHandle();
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(ao::LaunchParams)));
 }
@@ -333,6 +347,7 @@ void updateState(
     // Update params on device
     if (camera_changed || resize_dirty)
     {
+        params.radius = ao_radius_factor * scene_extent;
         params.subframe_index = 0;
         if (mdas_on)
         {
