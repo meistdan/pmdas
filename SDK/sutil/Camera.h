@@ -38,7 +38,7 @@ namespace sutil {
 class Camera {
 public:
     SUTILAPI Camera()
-        : m_eye(make_float3(1.0f)), m_lookat(make_float3(0.0f)), m_up(make_float3(0.0f, 1.0f, 0.0f)), m_fovY(35.0f), m_aspectRatio(1.0f), m_focalDistance(0.0f), m_lensRadius(0.0f)
+        : m_eye(make_float3(0.0f, 0.0f, 1.0f)), m_lookat(make_float3(0.0f)), m_up(make_float3(0.0f, 1.0f, 0.0f)), m_fovY(35.0f), m_aspectRatio(1.0f), m_focalDistance(0.0f), m_lensRadius(0.0f)
     {
     }
 

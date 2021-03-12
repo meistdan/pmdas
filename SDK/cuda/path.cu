@@ -88,7 +88,7 @@ extern "C" __global__ void __raygen__pinhole()
             payload.r1 = rnd(seed);
 
             traceRadiance(path::params.handle, ray_origin, ray_direction,
-                0.01f,  // tmin       // TODO: smarter offset
+                0.0f,   // tmin
                 1e16f,  // tmax
                 &payload);
 
@@ -159,7 +159,7 @@ extern "C" __global__ void __raygen__pinhole_mdas()
         payload.r1 = sample.y;
 
         traceRadiance(path::params.handle, ray_origin, ray_direction,
-            0.01f,  // tmin       // TODO: smarter offset
+            0.0f,   // tmin
             1e16f,  // tmax
             &payload);
 
@@ -266,7 +266,7 @@ extern "C" __global__ void __closesthit__radiance()
     if (opacity < 0.0f)
     {
         opacity = -opacity;
-        payload->radiance = 2000.0f * base_color;
+        payload->radiance = 10.0f * base_color;
     }
 
     const float z1 = payload->r0;
@@ -299,11 +299,14 @@ extern "C" __global__ void __closesthit__radiance()
         
         const float3 diff = (1.0f - F) * diff_color / M_PIf;
         const float3 spec = F * G_vis * D;
-
+        const float pdf =  N_dot_L / M_PIf;
+        
         payload->direction = L;
-        payload->attenuation *= opacity * N_dot_L * (diff + spec);
+
+        payload->attenuation *= opacity * N_dot_L * (diff + spec) / pdf;
+        //payload->attenuation *= base_color;
     }
-    payload->origin = geom.P;
+    payload->origin = geom.P + N * 1.0e-4f;
 
     //
     // compute direct lighting

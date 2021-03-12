@@ -28,6 +28,7 @@
 
 
 #include <sutil/Camera.h>
+#include <stdio.h>
 
 namespace sutil {
 
