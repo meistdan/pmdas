@@ -80,7 +80,7 @@ int32_t           mouse_button = -1;
 
 int32_t           max_samples = 30000000;
 float             samples_per_launch = 1;
-float             ao_radius_factor = 0.1f;
+float             ao_radius_factor = 0.05f;
 float             scene_extent = 1.0f;
 bool              mdas_on = false;
 

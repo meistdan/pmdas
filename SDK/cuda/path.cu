@@ -187,19 +187,20 @@ extern "C" __global__ void __miss__constant_radiance()
     if (path::params.environment_map != 0)
     {
         const float3 direction = normalize(optixGetWorldRayDirection());
-
-        // Y is up, swap x for yand z for x
+#if 0
         float theta = atan2f(direction.x, direction.z);
-
-        // Wrap around full circle if negative
         theta = theta < 0.0f ? theta + (2.0f * M_PI) : theta;
         float phi = acosf(direction.y);
-
-        // Map theta and phi to u and v texturecoordinates in [0,1] x [0,1] range
         float u = 1.0f - (theta / (2.0f * M_PI));
         float v = phi / M_PI;
-
-        payload->radiance = make_float3(tex2D<float4>(path::params.environment_map, u, v));
+#else
+        float d = sqrtf(direction.x * direction.x + direction.y * direction.y);
+        float r = d > 0 ? 0.159154943f * acosf(direction.z) / d : 0.0f;
+        float u = 0.5f + direction.x * r;
+        float v = -(0.5f + direction.y * r);
+#endif
+        float4 c = tex2D<float4>(path::params.environment_map, u, v);
+        payload->radiance = make_float3(c);
     }
     else 
     {
@@ -342,6 +343,7 @@ extern "C" __global__ void __closesthit__radiance()
 
                     const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
+
                     payload->radiance += opacity * light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
                 }
             }

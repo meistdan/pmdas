@@ -371,7 +371,7 @@ extern "C" __global__ void __closesthit__radiance()
             const float  N_dot_H = dot( N, H );
             const float  V_dot_H = dot( V, H );
 
-            if( N_dot_L > 0.0f && N_dot_V > 0.0f )
+            if( N_dot_L > 0.0f && N_dot_V > 0.0f && N_dot_H < 1.0f - 1.0e-4f )
             {
                 const float tmin     = 0.001f;           // TODO
                 const float tmax     = L_dist - 0.001f;  // TODO

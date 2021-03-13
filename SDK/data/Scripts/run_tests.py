@@ -17,7 +17,7 @@ bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.e
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
 ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
-scene_indices = [8]
+scene_indices = [0]
 
 spps = [0.25, 0.5, 1, 2, 4]
 extra_img_bits = [8, 8, 9, 9]

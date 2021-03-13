@@ -117,6 +117,7 @@ __device__ __forceinline__ float vis( const float N_dot_L, const float N_dot_V, 
 
 __device__ __forceinline__ float ggxNormal( const float N_dot_H, const float alpha )
 {
+    if (alpha < 1.0e-4f) return 1.0f;
     const float alpha_sq   = alpha*alpha;
     const float N_dot_H_sq = N_dot_H*N_dot_H;
     const float x          = N_dot_H_sq*( alpha_sq - 1.0f ) + 1.0f;

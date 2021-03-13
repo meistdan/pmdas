@@ -294,28 +294,31 @@ void initLaunchParams(const sutil::Scene& scene) {
     }
 
     // No lights => dummy light
-    if (point_lights.empty() && distant_lights.empty())
-    {
-        const float loffset = scene.aabb().maxExtent();
-        light.type = Light::Type::POINT;
-        light.point.color = { 0.0f, 0.0f, 0.0f };
-        light.point.intensity = 0.0f;
-        light.point.position = { 0.0f, 0.0f, 0.0f };
-        lights.push_back(light);
-        lights.push_back(light);
-    }
+    //if (point_lights.empty() && distant_lights.empty())
+    //{
+    //    const float loffset = scene.aabb().maxExtent();
+    //    light.type = Light::Type::POINT;
+    //    light.point.color = { 0.0f, 0.0f, 0.0f };
+    //    light.point.intensity = 0.0f;
+    //    light.point.position = { 0.0f, 0.0f, 0.0f };
+    //    lights.push_back(light);
+    //    lights.push_back(light);
+    //}
 
     params.lights.count = static_cast<uint32_t>(lights.size());
-    CUDA_CHECK(cudaMalloc(
-        reinterpret_cast<void**>(&params.lights.data),
-        lights.size() * sizeof(Light)
-    ));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(params.lights.data),
-        lights.data(),
-        lights.size() * sizeof(Light),
-        cudaMemcpyHostToDevice
-    ));
+    if (params.lights.count > 0)
+    {
+        CUDA_CHECK(cudaMalloc(
+            reinterpret_cast<void**>(&params.lights.data),
+            lights.size() * sizeof(Light)
+        ));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(params.lights.data),
+            lights.data(),
+            lights.size() * sizeof(Light),
+            cudaMemcpyHostToDevice
+        ));
+    }
 
     params.samples_per_launch = std::max(static_cast<unsigned int>(samples_per_launch), 1u);
     params.miss_color = background_color;
