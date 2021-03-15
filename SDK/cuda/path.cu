@@ -92,7 +92,7 @@ extern "C" __global__ void __raygen__pinhole()
                 1e16f,  // tmax
                 &payload);
 
-            result += payload.radiance * payload.attenuation;
+            result += payload.radiance;
 
             if (payload.done || depth >= path::params.max_depth)
                 break;
@@ -154,16 +154,18 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     int depth = 0;
     for (;;)
     {
-        sample = *(++sample_ptr);
-        payload.r0 = sample.x;
-        payload.r1 = sample.y;
+        if (depth < path::params.max_depth) {
+            sample = *(++sample_ptr);
+            payload.r0 = sample.x;
+            payload.r1 = sample.y;
+        }
 
         traceRadiance(path::params.handle, ray_origin, ray_direction,
             0.0f,   // tmin
             1e16f,  // tmax
             &payload);
 
-        result += payload.radiance * payload.attenuation;
+        result += payload.radiance;
 
         if (payload.done || depth >= path::params.max_depth)
             break;
@@ -200,11 +202,11 @@ extern "C" __global__ void __miss__constant_radiance()
         float v = -(0.5f + direction.y * r);
 #endif
         float4 c = tex2D<float4>(path::params.environment_map, u, v);
-        payload->radiance = make_float3(c);
+        payload->radiance = make_float3(c) * payload->attenuation;
     }
     else 
     {
-        payload->radiance = path::params.miss_color;
+        payload->radiance = path::params.miss_color * payload->attenuation;
     }
     payload->done = true;
 }
@@ -261,33 +263,82 @@ extern "C" __global__ void __closesthit__radiance()
     N = faceforward(N, V, N);
     const float  N_dot_V = dot(N, V);
 
+    //
+    // emissive geometry hit
+    //
     path::PayloadRadiance* payload = path::getPayload();
-
     payload->radiance = make_float3(0.0f);
     if (opacity < 0.0f)
     {
         opacity = -opacity;
-        payload->radiance = 10.0f * base_color;
+        payload->radiance = 10.0f * base_color * payload->attenuation;
     }
 
+    //
+    // compute direct lighting
+    //
+    for (int i = 0; i < path::params.lights.count; ++i)
+    {
+        Light light = path::params.lights.at<Light>(i);
+        if (light.type == Light::Type::POINT || light.type == Light::Type::DISTANT)
+        {
+            // TODO: optimize
+            const float3 L = light.type == Light::Type::POINT ?
+                normalize(light.point.position - geom.P) :
+                normalize(light.distant.direction);
+            const float  L_dist = light.type == Light::Type::POINT ?
+                length(light.point.position - geom.P) :
+                2.0f * light.distant.radius;
+            const float3 H = normalize(L + V);
+            const float  N_dot_L = dot(N, L);
+            const float  N_dot_H = dot(N, H);
+            const float  V_dot_H = dot(V, H);
+
+            if (N_dot_L > 0.0f)
+            {
+                const float tmin = 0.001f;           // TODO
+                const float tmax = L_dist - 0.001f;  // TODO
+                const bool  occluded = path::traceOcclusion(path::params.handle, geom.P, L, tmin, tmax);
+                if (!occluded)
+                {
+                    const float3 F = path::schlick(spec_color, V_dot_H);
+                    const float  G_vis = path::vis(N_dot_L, N_dot_V, alpha);
+                    const float  D = path::ggxNormal(N_dot_H, alpha);
+
+                    const float3 diff = (1.0f - F) * diff_color / M_PIf;
+                    const float3 spec = F * G_vis * D;
+
+                    payload->radiance += payload->attenuation * opacity * 
+                        light.point.color * light.point.intensity * N_dot_L * (diff + spec);
+                }
+            }
+        }
+    }
+
+
+    //
+    // spawn secondary ray
+    //
     const float z1 = payload->r0;
     const float z2 = payload->r1;
-
     if (opacity == 0.0f)
     {
         payload->direction = -V;
     }
-    else if (metallic == 1.0f)
-    {
-        payload->direction = normalize(-V + (2.0f * N_dot_V) * N);
-        payload->attenuation *= base_color;
-    }
     else
     {
         // Sample L
-        float3 L = path::cosine_sample_hemisphere(z1, z2);
-        path::Onb onb(N);
-        onb.inverse_transform(L);
+        float3 L;
+        if (metallic != 1.0f)
+        {
+            L = path::cosine_sample_hemisphere(z1, z2);
+            path::Onb onb(N);
+            onb.inverse_transform(L);
+        }
+        else 
+        {
+            L = normalize(-V + (2.0f * N_dot_V) * N);
+        }
 
         // Eval BRDF
         const float3 H = normalize(L + V);
@@ -308,46 +359,5 @@ extern "C" __global__ void __closesthit__radiance()
         //payload->attenuation *= base_color;
     }
     payload->origin = geom.P + N * 1.0e-4f;
-
-    //
-    // compute direct lighting
-    //
-
-    for( int i = 0; i < path::params.lights.count; ++i )
-    {
-        Light light = path::params.lights.at<Light>(i);
-        if( light.type == Light::Type::POINT || light.type == Light::Type::DISTANT )
-        {
-            // TODO: optimize
-            const float3 L = light.type == Light::Type::POINT ?
-                                        normalize(light.point.position - geom.P) :
-                                        normalize(light.distant.direction);
-            const float  L_dist  = light.type == Light::Type::POINT ? 
-                                        length( light.point.position - geom.P ) :
-                                        2.0f * light.distant.radius;
-            const float3 H       = normalize( L + V );
-            const float  N_dot_L = dot( N, L );
-            const float  N_dot_H = dot( N, H );
-            const float  V_dot_H = dot( V, H );
-
-            if( N_dot_L > 0.0f )
-            {
-                const float tmin     = 0.001f;           // TODO
-                const float tmax     = L_dist - 0.001f;  // TODO
-                const bool  occluded = path::traceOcclusion(path::params.handle, geom.P, L, tmin, tmax);
-                if( !occluded )
-                {
-                    const float3 F     = path::schlick( spec_color, V_dot_H );
-                    const float  G_vis = path::vis( N_dot_L, N_dot_V, alpha );
-                    const float  D     = path::ggxNormal( N_dot_H, alpha );
-
-                    const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
-                    const float3 spec = F * G_vis * D;
-
-                    payload->radiance += opacity * light.point.color * light.point.intensity * N_dot_L * ( diff + spec );
-                }
-            }
-        }
-    }
 
 }

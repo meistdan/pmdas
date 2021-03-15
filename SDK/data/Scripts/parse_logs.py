@@ -17,14 +17,18 @@ if os.path.exists(table_filename):
 
 testing_passes = 5
 
-scenes = ["pool", "chess"]
-bins = ["optixMotionBlur.exe", "optixDepthOfField.exe"]
-ref_spps = [1024, 1024]
-scene_indices = [0, 1]
+# pool-mb-mdas-mb-1-eib-9-sf-0.5-et-0.01-spp-4-pass-0.exr.log
+#pool-mb-spp-4-pass-0.exr.log
 
-spps = [0.25, 0.5, 1, 2, 4]
-extra_img_bits = [8, 8, 9, 9]
-morton_bits = [0, 1, 0, 1]
+scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon"]
+bin_labels = ["mb", "dof", "ao", "pt"]
+bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
+scene_indices = [0, 1, 2, 4, 7]
+
+# spps = [0.25, 0.5, 1, 2, 4]
+spps = [4]
+extra_img_bits = [8, 8, 9]
+morton_bits = [0, 1, 0]
 scale_factors = [0.25, 0.5, 1.0]
 error_thresholds = [0.01, 0.025, 0.05]
 
@@ -60,7 +64,9 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
 
     # test name
     scene = scenes[scene_index]
-    test_name = scene
+    bin_index = bin_indices[scene_index]
+    bin_label = bin_labels[bin_index]
+    test_name = scene + "-" + bin_label
     if mdas:
         test_name += "-mdas"
         test_name += "-mb-" + str(morton_bit)
@@ -144,8 +150,8 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
     total_time = total_mdas_time + trace_time
     total_time_denoising = total_time + denoising_time
 
-    table_file.write(", " + str(p % total_samples))
-    table_file.write(", " + str(p % total_iterations))
+    table_file.write(", " + str(p % int(total_samples)))
+    table_file.write(", " + str(p % int(total_iterations)))
     table_file.write(", " + str(p % initial_sampling_time))
     table_file.write(", " + str(p % construct_time))
     table_file.write(", " + str(p % compute_errors_time))
@@ -186,8 +192,8 @@ table_file.close()
 # scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas
 for scene_index in scene_indices:
 
-    # ref test name
     ref_test_name = scenes[scene_index]
+    ref_test_name += "-" + bin_labels[bin_indices[scene_index]]
     ref_test_name += "-reference"
     ref_filename = ref_test_name
     ref_filename = os.path.join(out_dir, ref_test_name + ".exr")
@@ -198,9 +204,9 @@ for scene_index in scene_indices:
             run(scene_index, spp, 0, 0, 0, 0, False)
 
     for spp in spps:
-        for scale_factor in scale_factors:
-            for error_threshold in error_thresholds:
-                for bit_index in range(bits_num):
+        for bit_index in range(bits_num):
+            for scale_factor in scale_factors:
+                for error_threshold in error_thresholds:
                     morton_bit = morton_bits[bit_index]
                     extra_img_bit = extra_img_bits[bit_index]
                     run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)

@@ -4,7 +4,7 @@ home_drive = "C:/Users/meist/projects"
 optix_bin_dir = home_drive + "/optix/SDK/build/bin/Release/"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "refs")
+out_dir = os.path.join(base_dir, "test")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
@@ -16,12 +16,14 @@ scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "cryte
 bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.exe", "optixPathTracer.exe"]
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
-ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
-scene_indices = [0]
+ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 8192, 8192, 8192]
+# scene_indices = [0, 1, 2, 4, 7, 8, 10]
+scene_indices = [8, 10]
 
-spps = [0.25, 0.5, 1, 2, 4]
-extra_img_bits = [8, 8, 9, 9]
-morton_bits = [0, 1, 0, 1]
+# spps = [0.25, 0.5, 1, 2, 4]
+spps = [4]
+extra_img_bits = [8, 8, 9]
+morton_bits = [0, 1, 0]
 scale_factors = [0.25, 0.5, 1.0]
 error_thresholds = [0.01, 0.025, 0.05]
 
@@ -99,17 +101,20 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
 
 # scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, testing_pass, mdas, ref
 for scene_index in scene_indices:
+
     if ref_enabled:
         run(scene_index, 0, 0, 0, 0, 0, 0, False, True)
-    # for testing_pass in range(testing_passes):
-    #     for scale_factor in scale_factors:
-    #         for error_threshold in error_thresholds:
-    #             for spp in spps:
-    #                 for bit_index in range(bits_num):
-    #                     morton_bit = morton_bits[bit_index]
-    #                     extra_img_bit = extra_img_bits[bit_index]
-    #                     run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, testing_pass,
-    #                         True, False)
-    #                     if spp >= 1:
-    #                         run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold,
-    #                             testing_pass, False, False)
+
+    for testing_pass in range(testing_passes):
+        for spp in spps:
+
+            if spp >= 1:
+                run(scene_index, spp, 0, 0, 1, 0, testing_pass, False, False)
+
+            for scale_factor in scale_factors:
+                for error_threshold in error_thresholds:
+                    for bit_index in range(bits_num):
+                        morton_bit = morton_bits[bit_index]
+                        extra_img_bit = extra_img_bits[bit_index]
+                        run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, testing_pass,
+                            True, False)

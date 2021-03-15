@@ -887,6 +887,7 @@ namespace mdas {
         int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
         int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
         std::cout << "Initial samples " << numberOfInitialSamples << std::endl;
+        std::cout << "Scale " << scaleX << " " << scaleY << std::endl;
     }
 
     template <typename Point>
