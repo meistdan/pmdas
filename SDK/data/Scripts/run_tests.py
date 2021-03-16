@@ -17,15 +17,14 @@ bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.e
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
 ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 8192, 8192, 8192]
-# scene_indices = [0, 1, 2, 4, 7, 8, 10]
-scene_indices = [8, 10]
+scene_indices = [0, 1, 2, 4, 7, 8, 10]
 
 # spps = [0.25, 0.5, 1, 2, 4]
 spps = [4]
-extra_img_bits = [8, 8, 9]
-morton_bits = [0, 1, 0]
-scale_factors = [0.25, 0.5, 1.0]
-error_thresholds = [0.01, 0.025, 0.05]
+extra_img_bits = [8, 8, 9, 10]
+morton_bits = [0, 1, 0, 0]
+scale_factors = [0.125, 0.25]
+error_thresholds = [0.005, 0.01]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)

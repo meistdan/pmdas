@@ -17,20 +17,17 @@ if os.path.exists(table_filename):
 
 testing_passes = 5
 
-# pool-mb-mdas-mb-1-eib-9-sf-0.5-et-0.01-spp-4-pass-0.exr.log
-#pool-mb-spp-4-pass-0.exr.log
-
 scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon"]
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
-scene_indices = [0, 1, 2, 4, 7]
+scene_indices = [0, 1, 2, 4, 7, 8, 10]
 
 # spps = [0.25, 0.5, 1, 2, 4]
 spps = [4]
-extra_img_bits = [8, 8, 9]
-morton_bits = [0, 1, 0]
-scale_factors = [0.25, 0.5, 1.0]
-error_thresholds = [0.01, 0.025, 0.05]
+extra_img_bits = [8, 8, 9, 10]
+morton_bits = [0, 1, 0, 0]
+scale_factors = [0.125, 0.25]
+error_thresholds = [0.005, 0.01]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
@@ -150,6 +147,12 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
     total_time = total_mdas_time + trace_time
     total_time_denoising = total_time + denoising_time
 
+    table_file.write(", " + str(p % total_time))
+    table_file.write(", " + str(error))
+    table_file.write(", " + str(error * total_time))
+    table_file.write(", " + str(p % total_time_denoising))
+    table_file.write(", " + str(error_denoised))
+    table_file.write(", " + str(error_denoised * total_time_denoising))
     table_file.write(", " + str(p % int(total_samples)))
     table_file.write(", " + str(p % int(total_iterations)))
     table_file.write(", " + str(p % initial_sampling_time))
@@ -161,16 +164,18 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
     table_file.write(", " + str(p % denoising_time))
     table_file.write(", " + str(p % total_mdas_time))
     table_file.write(", " + str(p % trace_time))
-    table_file.write(", " + str(p % total_time))
-    table_file.write(", " + str(error))
-    table_file.write(", " + str(p % total_time_denoising))
-    table_file.write(", " + str(error_denoised))
     table_file.write("\n")
     table_file.close()
 
 # table
 table_file = open(table_filename, "a")
 table_file.write("method / stat")
+table_file.write(", total time")
+table_file.write(", mse")
+table_file.write(", time * mse")
+table_file.write(", total time (denoised)")
+table_file.write(", mse (denoised)")
+table_file.write(", time * mse (denoised)")
 table_file.write(", total samples")
 table_file.write(", iterations")
 table_file.write(", initial sampling time")
@@ -182,10 +187,6 @@ table_file.write(", integrate time")
 table_file.write(", denoising time")
 table_file.write(", total mdas time")
 table_file.write(", trace time")
-table_file.write(", total time")
-table_file.write(", mse")
-table_file.write(", total time (denoised)")
-table_file.write(", mse (denoised)")
 table_file.write("\n")
 table_file.close()
 
@@ -205,8 +206,8 @@ for scene_index in scene_indices:
 
     for spp in spps:
         for bit_index in range(bits_num):
-            for scale_factor in scale_factors:
-                for error_threshold in error_thresholds:
+            for error_threshold in error_thresholds:
+                for scale_factor in scale_factors:
                     morton_bit = morton_bits[bit_index]
                     extra_img_bit = extra_img_bits[bit_index]
                     run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)

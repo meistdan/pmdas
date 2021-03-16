@@ -189,9 +189,8 @@ namespace mdas {
 
                 // Random point
                 Point r;
-                for (int i = 0; i < Point::DIM; ++i) {
+                for (int i = 0; i < Point::DIM; ++i)
                     r.data[i] = rnd(seed);
-                }
 
                 // Sample index
                 int sampleIndex = samplesPerLeaf * leafIndex + j;
@@ -226,7 +225,6 @@ namespace mdas {
     template <typename Point>
     __global__ void constructKernel(
         int numberOfInteriors,
-        int maxLeafSize,
         int bitsPerDim,
         int extraImgBits,
         float scaleX,
@@ -377,7 +375,7 @@ namespace mdas {
                 if (avgValue.y != 0.0f) error += diffSum.y / avgValue.y;
                 if (avgValue.z != 0.0f) error += diffSum.z / avgValue.z;
                 error /= float(sampleCount);
-                error += 1.0e-5;
+                error += 1.0e-5f;
                 error *= volume;
 
 
@@ -410,8 +408,6 @@ namespace mdas {
         int maxLeafSize,
         int candidatesNum,
         float errorThreshold,
-        float scaleX,
-        float scaleY,
         int* leafIndices,
         float* nodeErrors,
         KDTree<Point>::Node* nodes,
@@ -472,8 +468,8 @@ namespace mdas {
                 // Interior
                 else {
 
-                    bool traverseChild0 = center[node.dimension] - radius <= node.position;
-                    bool traverseChild1 = center[node.dimension] + radius >= node.position;
+                    bool traverseChild0 = center[~node.dimension] - radius <= node.position;
+                    bool traverseChild1 = center[~node.dimension] + radius >= node.position;
 
                     // Neither child was intersected => pop stack
                     if (!traverseChild0 && !traverseChild1) {
@@ -485,7 +481,7 @@ namespace mdas {
                     else {
                         curNodeIndex = traverseChild0 ? node.Left() : node.Right();
 
-                        // Both children were intersected => push the farther one
+                        // Both children were intersected => push the one of them
                         if (traverseChild0 && traverseChild1) {
                             ++stackPtr;
                             *stackPtr = node.Right();
@@ -526,7 +522,6 @@ namespace mdas {
                             }
                         }
                     }
-
 
                     // Distance to the nearest neighbor
                     if (maxDistance < minDistance) {
@@ -897,8 +892,10 @@ namespace mdas {
         cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
 
         // Number of samples
+        const int samplesPerLeaf = 2;
         int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
-        numberOfSamples = numberOfLeaves * maxLeafSize;
+        numberOfNodes = 2 * numberOfLeaves - 1;
+        numberOfSamples = numberOfLeaves * samplesPerLeaf;
 
         // Grid and block size
         int minGridSize, blockSize;
@@ -915,7 +912,7 @@ namespace mdas {
         }
 
         // Launch
-        uniformSamplingKernel << <gridSize, blockSize >> > (numberOfLeaves, maxLeafSize, bitsPerDim, extraImgBits, scaleX, scaleY,
+        uniformSamplingKernel << <gridSize, blockSize >> > (numberOfLeaves, samplesPerLeaf, bitsPerDim, extraImgBits, scaleX, scaleY,
             nodeErrors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
 
         // Elapsed time and cleanup
@@ -936,14 +933,13 @@ namespace mdas {
     void KDTree<Point>::Construct(void) {
 
         // Number of nodes
-        int numberOfLeaves = numberOfSamples / maxLeafSize;
-        numberOfNodes = 2 * numberOfLeaves - 1;
+        int numberOfInteriors = numberOfNodes / 2;
 
         // Grid and block size
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
             constructKernel<Point>, 0, 0);
-        int gridSize = divCeil(numberOfLeaves - 1, blockSize);
+        int gridSize = divCeil(numberOfInteriors, blockSize);
 
         // Timer
         cudaEvent_t start, stop;
@@ -954,7 +950,7 @@ namespace mdas {
         }
 
         // Launch
-        constructKernel<Point><<<gridSize, blockSize>>>(numberOfLeaves - 1, maxLeafSize, bitsPerDim,
+        constructKernel<Point><<<gridSize, blockSize>>>(numberOfInteriors, bitsPerDim,
             extraImgBits, scaleX, scaleY, nodes.Data());
 
         // Elapsed time and cleanup
@@ -1074,8 +1070,6 @@ namespace mdas {
             maxLeafSize,
             candidatesNum,
             errorThreshold,
-            scaleX,
-            scaleY,
             leafIndices.Data(),
             nodeErrors.Data(),
             nodes.Data(),
