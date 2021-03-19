@@ -185,6 +185,15 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup1-mc.png"), mc_image_ldr_closeup1)
 
 # scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_factor, error_threshold, gamma, rect0, rect1
-# pool-mb-mdas-mb-1-eib-8-sf-0.0625-et-0.01-spp-8
 
+# pool-mb-mdas-mb-1-eib-8-sf-0.0625-et-0.01-spp-8
 run("pool", "mb", 8, 14, 1, 8, 0.0625, 0.01, 2.2, [[364, 340], [50, 50]], [[234, 757], [50, 50]])
+
+# chess-dof-mdas-mb-2-eib-6-sf-0.25-et-0.01-spp-8
+run("chess", "dof", 8, 11, 1, 8, 0.25, 0.01, 2.2, [[40, 574], [90, 120]], [[593, 330], [75, 100]])
+
+# Bistro-dof-mdas-mb-1-eib-8-sf-0.25-et-0.01-spp-8
+run("Bistro", "dof", 8, 8, 1, 8, 0.25, 0.01, 2.2, [[990, 488], [100, 56]], [[934, 773], [120, 68]])
+
+# san-miguel-ao-mdas-mb-2-eib-6-sf-0.25-et-0.025-spp-8
+run("san-miguel", "ao", 8, 14, 2, 6, 0.25, 0.025, 2.2, [[620, 615], [120, 68]], [[47, 773], [200, 112]])

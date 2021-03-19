@@ -13,9 +13,10 @@ testing_passes = 2
 scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast"]
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3]
-scene_indices = [0, 1, 2, 4, 5, 8, 11]
+# scene_indices = [0, 1, 2, 4, 5, 8, 11]
+scene_indices = [8]
 
-mc_spps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+mc_spps = list(range(1, 32))
 spps = [8]
 extra_img_bits = [6, 7, 8, 8]
 morton_bits = [2, 1, 0, 1]

@@ -103,7 +103,7 @@ static __forceinline__ __device__ float3 cosine_sample_hemisphere(const float u1
 
 __device__ __forceinline__ float3 schlick( const float3 spec_color, const float V_dot_H )
 {
-    return spec_color + ( make_float3( 1.0f ) - spec_color ) * powf( 1.0f - V_dot_H, 5.0f );
+    return spec_color + ( make_float3( 1.0f ) - spec_color ) * powf( max(0.0f, 1.0f - V_dot_H), 5.0f );
 }
 
 __device__ __forceinline__ float vis( const float N_dot_L, const float N_dot_V, const float alpha )
