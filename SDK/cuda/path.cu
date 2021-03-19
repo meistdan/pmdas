@@ -329,16 +329,16 @@ extern "C" __global__ void __closesthit__radiance()
     {
         // Sample L
         float3 L;
-        if (metallic != 1.0f)
+        //if (metallic != 1.0f)
         {
             L = path::cosine_sample_hemisphere(z1, z2);
             path::Onb onb(N);
             onb.inverse_transform(L);
         }
-        else 
-        {
-            L = normalize(-V + (2.0f * N_dot_V) * N);
-        }
+        //else 
+        //{
+        //    L = normalize(-V + (2.0f * N_dot_V) * N);
+        //}
 
         // Eval BRDF
         const float3 H = normalize(L + V);

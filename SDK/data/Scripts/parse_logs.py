@@ -6,28 +6,21 @@ home_drive = "C:/Users/meist/projects"
 base_dir = home_drive + "/optix/SDK/data/"
 
 out_dir = os.path.join(base_dir, "test")
-if not (os.path.exists(out_dir)):
-    os.mkdir(out_dir)
 os.chdir(out_dir)
 
-# table file
-table_filename = os.path.join(out_dir, "table.csv")
-if os.path.exists(table_filename):
-    os.remove(table_filename)
+testing_passes = 2
 
-testing_passes = 5
-
-scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon"]
+scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast"]
 bin_labels = ["mb", "dof", "ao", "pt"]
-bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3]
-scene_indices = [0, 1, 2, 4, 7, 8, 10]
+bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3]
+scene_indices = [0, 1, 2, 4, 5, 8, 11]
 
-# spps = [0.25, 0.5, 1, 2, 4]
-spps = [4]
-extra_img_bits = [8, 8, 9, 10]
-morton_bits = [0, 1, 0, 0]
-scale_factors = [0.125, 0.25]
-error_thresholds = [0.005, 0.01]
+mc_spps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+spps = [8]
+extra_img_bits = [6, 7, 8, 8]
+morton_bits = [2, 1, 0, 1]
+scale_factors = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4]
+error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
@@ -36,11 +29,11 @@ p = "%.3f"
 
 
 def read_image(filename):
-    img = cv2.imread(filename)
+    img = cv2.imread(filename, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
     return img
 
 
-def mse(img0: np.array, img1 : np.array):
+def mse(img0, img1):
     return (np.subtract(img0, img1) ** 2).mean()
 
 
@@ -57,12 +50,9 @@ def get_values(key, filename):
     return res
 
 
-def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas):
+def run(scene, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas):
 
     # test name
-    scene = scenes[scene_index]
-    bin_index = bin_indices[scene_index]
-    bin_label = bin_labels[bin_index]
     test_name = scene + "-" + bin_label
     if mdas:
         test_name += "-mdas"
@@ -167,47 +157,56 @@ def run(scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_thresh
     table_file.write("\n")
     table_file.close()
 
-# table
-table_file = open(table_filename, "a")
-table_file.write("method / stat")
-table_file.write(", total time")
-table_file.write(", mse")
-table_file.write(", time * mse")
-table_file.write(", total time (denoised)")
-table_file.write(", mse (denoised)")
-table_file.write(", time * mse (denoised)")
-table_file.write(", total samples")
-table_file.write(", iterations")
-table_file.write(", initial sampling time")
-table_file.write(", construct time")
-table_file.write(", compute errors time")
-table_file.write(", adaptive sampling time")
-table_file.write(", update indices time")
-table_file.write(", integrate time")
-table_file.write(", denoising time")
-table_file.write(", total mdas time")
-table_file.write(", trace time")
-table_file.write("\n")
-table_file.close()
 
 # scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas
 for scene_index in scene_indices:
 
-    ref_test_name = scenes[scene_index]
+    scene = scenes[scene_index]
+    bin_index = bin_indices[scene_index]
+    bin_label = bin_labels[bin_index]
+
+    # table file
+    table_filename = os.path.join(out_dir, "table-" + scene + ".csv")
+    if os.path.exists(table_filename):
+        os.remove(table_filename)
+
+    # table
+    table_file = open(table_filename, "a")
+    table_file.write("method / stat")
+    table_file.write(", total time")
+    table_file.write(", mse")
+    table_file.write(", time * mse")
+    table_file.write(", total time (denoised)")
+    table_file.write(", mse (denoised)")
+    table_file.write(", time * mse (denoised)")
+    table_file.write(", total samples")
+    table_file.write(", iterations")
+    table_file.write(", initial sampling time")
+    table_file.write(", construct time")
+    table_file.write(", compute errors time")
+    table_file.write(", adaptive sampling time")
+    table_file.write(", update indices time")
+    table_file.write(", integrate time")
+    table_file.write(", denoising time")
+    table_file.write(", total mdas time")
+    table_file.write(", trace time")
+    table_file.write("\n")
+    table_file.close()
+
+    ref_test_name = scene
     ref_test_name += "-" + bin_labels[bin_indices[scene_index]]
     ref_test_name += "-reference"
     ref_filename = ref_test_name
     ref_filename = os.path.join(out_dir, ref_test_name + ".exr")
     ref_image = read_image(ref_filename)
 
-    for spp in spps:
-        if spp >= 1:
-            run(scene_index, spp, 0, 0, 0, 0, False)
+    for spp in mc_spps:
+        run(scene, bin_label, spp, 0, 0, 0, 0, False)
 
     for spp in spps:
-        for bit_index in range(bits_num):
-            for error_threshold in error_thresholds:
+        for error_threshold in error_thresholds:
+            for bit_index in range(bits_num):
                 for scale_factor in scale_factors:
                     morton_bit = morton_bits[bit_index]
                     extra_img_bit = extra_img_bits[bit_index]
-                    run(scene_index, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)
+                    run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)

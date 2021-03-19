@@ -44,6 +44,16 @@ struct AABB {
         return maxAxis;
     }
 
+    __host__ __device__ float MaxExtent(void) {
+        float maxExtent = -FLT_MAX;
+        Point diag = Diagonal();
+        for (int i = Point::DIM - 1; i >= 0; --i) {
+            if (maxExtent < diag[i])
+                maxExtent = diag[i];
+        }
+        return maxExtent;
+    }
+
     __host__ __device__ bool Contains(const Point& point) {
         for (int i = 0; i < Point::DIM; ++i) {
             if (point[i] < mn[i] || point[i] > mx[i]) return false;
@@ -70,6 +80,14 @@ struct AABB {
         for (int i = 0; i < Point::DIM; ++i)
             if (mn[i] > mx[i]) return false;
         return true;
+    }
+
+    __host__ __device__ void Cubify(float R = 0.5f) {
+        Point center = Center();
+        float radius = R * Point::Distance(mn, mx);
+        Point diag = Point(radius);
+        mn = center - diag;
+        mx = center + diag;
     }
 
     __host__ __device__ static bool Intersect(const AABB& a, const AABB& b) {

@@ -435,15 +435,16 @@ namespace mdas {
             float error = nodeErrors[nodeIndex];
 
             // Box
+            float4 tmp;
             AABB<Point> box = nodeBoxes[nodeIndex];
 
+#if 0
             // Radius and center
             const float R = 0.55f;
             float radius = R * Point::Distance(box.mx, box.mn);
             Point center = box.Center();
 
             // Setup traversal
-            float4 tmp;
             int* stackPtr = &stack[0];
             int curNodeIndex = 0;
 
@@ -458,7 +459,7 @@ namespace mdas {
 
                     // Update error
                     error = max(error, nodeErrors[curNodeIndex]);
-
+    
                     // Pop
                     curNodeIndex = *stackPtr;
                     --stackPtr;
@@ -491,6 +492,7 @@ namespace mdas {
                 }
 
             }
+#endif
 
             if (error >= errorThreshold * g_error) {
 
@@ -892,7 +894,7 @@ namespace mdas {
         cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
 
         // Number of samples
-        const int samplesPerLeaf = 2;
+        const int samplesPerLeaf = 4;
         int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
         numberOfNodes = 2 * numberOfLeaves - 1;
         numberOfSamples = numberOfLeaves * samplesPerLeaf;
