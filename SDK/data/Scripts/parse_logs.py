@@ -13,15 +13,14 @@ testing_passes = 2
 scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast"]
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3]
-# scene_indices = [0, 1, 2, 4, 5, 8, 11]
-scene_indices = [8]
 
-mc_spps = list(range(1, 32))
+scene_indices = [0, 1, 2, 3, 4, 8, 11]
+mc_spps = list(range(1, 33))
 spps = [8]
-extra_img_bits = [6, 7, 8, 8]
-morton_bits = [2, 1, 0, 1]
-scale_factors = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4]
-error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5]
+extra_img_bits = [4, 6, 8, 10]
+morton_bits = [3, 2, 1, 0]
+scale_factors = [1/16, 1/8, 1/4, 1/2, 1]
+error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
@@ -51,7 +50,7 @@ def get_values(key, filename):
     return res
 
 
-def run(scene, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas):
+def run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, mdas):
 
     # test name
     test_name = scene + "-" + bin_label

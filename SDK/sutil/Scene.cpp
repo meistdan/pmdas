@@ -262,6 +262,87 @@ void processGLTFNode(
 
 } // end anon namespace
 
+void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3& v, const float3& color)
+{
+    // Material
+    MaterialData::Pbr mtl;
+    mtl.base_color = -make_float4(color, 1.0f);
+    scene.addMaterial(mtl);
+
+    // Vertices
+    std::vector<float3> vertices;
+    vertices.push_back(o);
+    vertices.push_back(o + u);
+    vertices.push_back(o + v);
+    vertices.push_back(o + u + v);
+    
+    BufferView vertView;
+    vertView.data = 0;
+
+    // Indices
+    std::vector<int> indices;
+    indices.push_back(0);
+    indices.push_back(1);
+    indices.push_back(3);
+    indices.push_back(0);
+    indices.push_back(3);
+    indices.push_back(4);
+    
+    // Box
+    Aabb box;
+    box.include(vertices[0]);
+    box.include(vertices[1]);
+    box.include(vertices[2]);
+    box.include(vertices[3]);
+
+    // Allocate buffer
+    CUdeviceptr buffer = 0;
+    size_t vertices_size_align = roundUp(sizeof(float3) * vertices.size(), OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+    size_t indices_size_align = roundUp(sizeof(int) * indices.size(), OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+    size_t total_size = vertices_size_align + indices_size_align;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&buffer), total_size));
+
+    // Copy data
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(buffer),
+        reinterpret_cast<void*>(vertices.data()),
+        vertices.size() * sizeof(float3),
+        cudaMemcpyHostToDevice
+    ));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(buffer + vertices_size_align),
+        reinterpret_cast<void*>(indices.data()),
+        indices.size() * sizeof(int),
+        cudaMemcpyHostToDevice
+    ));
+    scene.addBuffer(buffer);
+    
+    // Buffer views
+    BufferView vertBufferView;
+    vertBufferView.data = buffer;
+    vertBufferView.elmt_byte_size = sizeof(float3);
+    vertBufferView.byte_stride = sizeof(float3);
+    vertBufferView.count = vertices.size();
+
+    BufferView indBufferView;
+    indBufferView.data = buffer + vertices_size_align;
+    indBufferView.elmt_byte_size = sizeof(int);
+    indBufferView.byte_stride = sizeof(int);
+    indBufferView.count = indices.size();
+
+    // Mesh
+    auto mesh = std::make_shared<Scene::MeshGroup>();
+    mesh->name = "area_light";
+    mesh->positions.push_back(vertBufferView);
+    mesh->indices.push_back(indBufferView);
+    mesh->material_idx.push_back(scene.materials().size() - 1);
+    mesh->transform = Matrix4x4::identity();
+    mesh->object_aabb = box;
+    mesh->world_aabb = box;
+    mesh->normals.push_back(BufferView());
+    mesh->texcoords.push_back(BufferView());
+    scene.addMesh(mesh);
+}
 
 void loadEnvironmentMap(const std::string& filename, Scene& scene)
 {
@@ -348,9 +429,6 @@ void loadScene( const std::string& filename, Scene& scene, bool emissive )
         const uint64_t buf_size = gltf_buffer.data.size();
         std::cerr << "Processing glTF buffer '" << gltf_buffer.name << "'\n"
             << "\tbyte size: " << buf_size << std::endl;
-                  //<< "\turi      : " << gltf_buffer.uri << std::endl;
-
-        //scene.addBuffer( buf_size,  gltf_buffer.data.data() );
     }
 
     //
@@ -529,20 +607,6 @@ Scene::Scene( SamplingType sampling_type, TraceType trace_type )
 Scene::~Scene( void )
 {
     cleanup();
-}
-
-
-void Scene::addBuffer( const uint64_t buf_size, const void* data )
-{
-        CUdeviceptr buffer = 0;
-        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &buffer ), buf_size ) );
-        CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( buffer ),
-                    data,
-                    buf_size,
-                    cudaMemcpyHostToDevice
-                    ) );
-        m_buffers.push_back( buffer );
 }
 
 
@@ -787,7 +851,7 @@ void Scene::remapBuffers(std::map<CUdeviceptr, CUdeviceptr>& addr_map, tinygltf:
     // Allocate buffer
     CUdeviceptr buffer = 0;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&buffer), total_size));
-    m_buffers.push_back(buffer);
+    addBuffer(buffer);
 
     // Copy data
     total_size = 0;

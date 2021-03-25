@@ -9,8 +9,8 @@ if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
 
-ref_enabled = True
-mc_enabled = True
+ref_enabled = False
+mc_enabled = False
 mdas_enabled = True
 testing_passes = 2
 
@@ -19,16 +19,15 @@ bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.e
 bin_labels = ["mb", "dof", "ao", "pt"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3]
 ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 8192, 8192, 8192, 8192]
-# scene_indices = [0, 1, 2, 4, 5, 8, 11]
-scene_indices = [8, 11]
 
-# mc_spps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-mc_spps = list(range(17, 33))
+scene_indices = [0, 1, 2, 3, 4, 8, 11]
+mc_spps = list(range(1, 33))
 spps = [8]
-extra_img_bits = [6, 7, 8, 8]
-morton_bits = [2, 1, 0, 1]
-scale_factors = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4]
-error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5]
+extra_img_bits = [4, 6, 8, 10]
+morton_bits = [3, 2, 1, 0]
+# scale_factors = [1/16, 1/8, 1/4, 1/2, 1]
+scale_factors = [2]
+error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)

@@ -36,7 +36,8 @@ struct Light
     {
         POINT   = 0,
         AMBIENT = 1,
-        DISTANT = 2
+        DISTANT = 2,
+        AREA    = 3
     };
 
     struct Point
@@ -59,6 +60,13 @@ struct Light
         float3   color      CONST_STATIC_INIT( {1.0f, 1.0f, 1.0f} );
     };
 
+    struct Area
+    {
+        float3   o          CONST_STATIC_INIT({});
+        float3   u          CONST_STATIC_INIT({});
+        float3   v          CONST_STATIC_INIT({});
+        float3   color      CONST_STATIC_INIT({ 5.0f, 5.0f, 5.0f });
+    };
 
     Type  type;
 
@@ -67,5 +75,6 @@ struct Light
         Point   point;
         Distant distant;
         Ambient ambient;
+        //Area    area;
     };
 };

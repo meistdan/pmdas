@@ -106,7 +106,7 @@ public:
     SUTILAPI void addCamera  ( const Camera& camera            )    { m_cameras.push_back( camera );   }
     SUTILAPI void addMesh    ( std::shared_ptr<MeshGroup> mesh )    { m_meshes.push_back( mesh );      }
     SUTILAPI void addMaterial( const MaterialData::Pbr& mtl    )    { m_materials.push_back( mtl );    }
-    SUTILAPI void addBuffer  ( const uint64_t buf_size, const void* data );
+    SUTILAPI void addBuffer  (CUdeviceptr buffer               )    { m_buffers.push_back(buffer);     }
     SUTILAPI void addImage(
                 const int32_t width,
                 const int32_t height,
@@ -185,6 +185,7 @@ private:
 };
 
 
+SUTILAPI void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3& v, const float3& color);
 SUTILAPI void loadEnvironmentMap(const std::string& filename, Scene& scene);
 SUTILAPI void loadScene( const std::string& filename, Scene& scene, bool emissive = false );
 
