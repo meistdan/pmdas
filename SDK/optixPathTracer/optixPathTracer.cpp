@@ -279,7 +279,8 @@ void initLaunchParams(const sutil::Scene& scene) {
     {
         light.type = Light::Type::AREA;
         light.area.color = i < light_colors.size()
-            ? light_colors[i] : make_float3(5.0f, 5.0f, 5.0f);
+            ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.point.intensity = 5.0f;
         light.area.o = area_lights[i].o;
         light.area.u = area_lights[i].u;
         light.area.v = area_lights[i].v;
@@ -705,7 +706,7 @@ int main(int argc, char* argv[])
             sutil::loadEnvironmentMap(envfile, scene);
         for (int i = 0; i < area_lights.size(); ++i)
             sutil::loadAreaLight(scene, area_lights[i].o, area_lights[i].u, 
-                area_lights[i].v, i < light_colors.size() ? light_colors[i] : make_float3(5.0f));
+                area_lights[i].v, i < light_colors.size() ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f));
         scene.finalize();
 
         OPTIX_CHECK(optixInit()); // Need to initialize function table

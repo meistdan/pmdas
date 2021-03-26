@@ -334,7 +334,6 @@ extern "C" __global__ void __closesthit__radiance()
     //
     // compute direct lighting
     //
-
     float3 N = geom.N;
     const float3 V = -normalize(optixGetWorldRayDirection());
     if( hit_group_data->material_data.pbr.normal_tex )

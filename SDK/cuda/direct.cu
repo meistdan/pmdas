@@ -286,7 +286,7 @@ extern "C" __global__ void __closesthit__radiance()
                     const float3 diff = (1.0f - F) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
 
-                    payload->radiance += opacity * light.point.color /** light.point.intensity */ * N_dot_L * (diff + spec);
+                    payload->radiance += opacity * light.point.color * light.point.intensity * N_dot_L * (diff + spec);
                 }
             }
         }
