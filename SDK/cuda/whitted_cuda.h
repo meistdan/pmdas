@@ -114,7 +114,6 @@ static __forceinline__ __device__ void traceRadiance(
      payload->result.x = __int_as_float( u0 );
      payload->result.y = __int_as_float( u1 );
      payload->result.z = __int_as_float( u2 );
-     payload->depth    = u3;
 }
 
 
@@ -146,7 +145,6 @@ static __forceinline__ __device__ void traceRadiance(
     payload->result.x = __int_as_float(u0);
     payload->result.y = __int_as_float(u1);
     payload->result.z = __int_as_float(u2);
-    payload->depth = u3;
 }
 
 

@@ -271,7 +271,7 @@ extern "C" __global__ void __closesthit__radiance()
     if (opacity < 0.0f)
     {
         opacity = -opacity;
-        payload->radiance = 10.0f * base_color * payload->attenuation;
+        payload->radiance = base_color * payload->attenuation;
     }
 
     //

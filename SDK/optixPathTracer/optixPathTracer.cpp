@@ -127,6 +127,7 @@ protected:
 
         registerOption("Light.point", OPT_VECTOR3);
         registerOption("Light.distant", OPT_VECTOR3);
+        registerOption("Light.area", OPT_PARALLELOGRAM);
         registerOption("Light.color", OPT_VECTOR3);
         registerOption("Light.background", "1.0 1.0 1.0", OPT_VECTOR3);
 
@@ -263,19 +264,34 @@ void initLaunchParams(const sutil::Scene& scene) {
     std::vector<Light> lights;
     std::vector<float3> point_lights;
     std::vector<float3> distant_lights;
+    std::vector<Parallelogram> area_lights;
     std::vector<float3> light_colors;
     float3 background_color;
     Environment::getInstance()->getVector3Values("Light.point", point_lights);
     Environment::getInstance()->getVector3Values("Light.distant", distant_lights);
+    Environment::getInstance()->getParallelogramValues("Light.area", area_lights);
     Environment::getInstance()->getVector3Values("Light.color", light_colors);
     Environment::getInstance()->getVector3Value("Light.background", background_color);
-    
-    // Point lights
+
+    // Area light
     Light light;
+    for (int i = 0; i < area_lights.size(); ++i)
+    {
+        light.type = Light::Type::AREA;
+        light.area.color = i < light_colors.size()
+            ? light_colors[i] : make_float3(5.0f, 5.0f, 5.0f);
+        light.area.o = area_lights[i].o;
+        light.area.u = area_lights[i].u;
+        light.area.v = area_lights[i].v;
+        lights.push_back(light);
+    }
+
+    // Point lights
     for (int i = 0; i < point_lights.size(); ++i) 
     {
         light.type = Light::Type::POINT;
-        light.point.color = i < light_colors.size() ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
+        light.point.color = area_lights.size() + i < light_colors.size() 
+            ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.point.intensity = 5.0f;
         light.point.position = point_lights[i];
         lights.push_back(light);
@@ -285,7 +301,7 @@ void initLaunchParams(const sutil::Scene& scene) {
     for (int i = 0; i < distant_lights.size(); ++i) 
     {
         light.type = Light::Type::DISTANT;
-        light.distant.color = point_lights.size() + i < light_colors.size()
+        light.distant.color = area_lights.size() + point_lights.size() + i < light_colors.size()
             ? light_colors[i] : make_float3(1.0f, 1.0f, 0.8f);
         light.distant.intensity = 1.0f;
         light.distant.direction = normalize(distant_lights[i]);
@@ -573,7 +589,9 @@ int main(int argc, char* argv[])
     std::string envfile;
     std::vector<std::string> infiles;
     std::vector<Frame> frames;
-    std::vector<bool> emissives;
+
+    std::vector<Parallelogram> area_lights;
+    std::vector<float3> light_colors;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -605,9 +623,10 @@ int main(int argc, char* argv[])
 
     Environment::getInstance()->getStringValues("Model.filename", infiles);
     Environment::getInstance()->getFrameValues("Model.frame", frames);
-    Environment::getInstance()->getBoolValues("Model.emissive", emissives);
 
     Environment::getInstance()->getStringValue("EnvironmentMap.filename", envfile);
+    Environment::getInstance()->getVector3Values("Light.color", light_colors);
+    Environment::getInstance()->getParallelogramValues("Light.area", area_lights);
 
     if (infiles.empty())
     {
@@ -650,8 +669,7 @@ int main(int argc, char* argv[])
         for (size_t i = 0; i < infiles.size(); ++i)
         {
             size_t mesh_offset = scene.meshes().size();
-            bool emissive = i < emissives.size() ? emissives[i] : false;
-            sutil::loadScene(infiles[i].c_str(), scene, emissive);
+            sutil::loadScene(infiles[i].c_str(), scene);
             if (i >= infiles.size() - begins)
             {
                 std::vector<Frame> frameset;
@@ -685,6 +703,9 @@ int main(int argc, char* argv[])
         }
         if (!envfile.empty())
             sutil::loadEnvironmentMap(envfile, scene);
+        for (int i = 0; i < area_lights.size(); ++i)
+            sutil::loadAreaLight(scene, area_lights[i].o, area_lights[i].u, 
+                area_lights[i].v, i < light_colors.size() ? light_colors[i] : make_float3(5.0f));
         scene.finalize();
 
         OPTIX_CHECK(optixInit()); // Need to initialize function table

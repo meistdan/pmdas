@@ -65,6 +65,21 @@ bool Environment::filterValue(const std::string& value, std::string& filteredVal
             + std::to_string(value.translate.x) + " " + std::to_string(value.translate.y) + " " + std::to_string(value.translate.z) + " "
             + std::to_string(value.rotate.w) + " " + std::to_string(value.rotate.x) + " " + std::to_string(value.rotate.y) + " " + std::to_string(value.rotate.z);
     }
+    else if (type == OPT_PARALLELOGRAM) {
+        Parallelogram value;
+        ss >> value.o.x;
+        ss >> value.o.y;
+        ss >> value.o.z;
+        ss >> value.u.x;
+        ss >> value.u.y;
+        ss >> value.u.z;
+        ss >> value.v.x;
+        ss >> value.v.y;
+        ss >> value.v.z;
+        filteredValue = std::to_string(value.o.x) + " " + std::to_string(value.o.y) + " " + std::to_string(value.o.z) + " " +
+            std::to_string(value.u.x) + " " + std::to_string(value.u.y) + " " + std::to_string(value.u.z) + " " +
+            std::to_string(value.v.x) + " " + std::to_string(value.v.y) + " " + std::to_string(value.v.z);
+    }
     else {
         filteredValue = value;
         if (value.empty()) valid = false;
@@ -259,6 +274,40 @@ bool Environment::getFrameValue(const std::string& name, Frame& value) {
         ss >> value.rotate.x;
         ss >> value.rotate.y;
         ss >> value.rotate.z;
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+bool Environment::getParallelogramValue(const std::string& name, Parallelogram& value) {
+    Option opt;
+    if (!findOption(name, opt)) return false;
+    if (!opt.values.empty() && !opt.values.front().empty()) {
+        std::stringstream ss(opt.values.front());
+        ss >> value.o.x;
+        ss >> value.o.y;
+        ss >> value.o.z;
+        ss >> value.u.x;
+        ss >> value.u.y;
+        ss >> value.u.z;
+        ss >> value.v.x;
+        ss >> value.v.y;
+        ss >> value.v.z;
+        return true;
+    }
+    else if (!opt.defaultValue.empty()) {
+        std::stringstream ss(opt.defaultValue);
+        ss >> value.o.x;
+        ss >> value.o.y;
+        ss >> value.o.z;
+        ss >> value.u.x;
+        ss >> value.u.y;
+        ss >> value.u.z;
+        ss >> value.v.x;
+        ss >> value.v.y;
+        ss >> value.v.z;
         return true;
     }
     else {
@@ -468,6 +517,48 @@ bool Environment::getFrameValues(const std::string& name, std::vector<Frame>& va
     }
 }
 
+bool Environment::getParallelogramValues(const std::string& name, std::vector<Parallelogram>& values) {
+    Option opt;
+    if (!findOption(name, opt)) return false;
+    if (!opt.values.empty() && !opt.values.front().empty()) {
+        values.clear();
+        std::vector<std::string>::iterator i;
+        for (i = opt.values.begin(); i != opt.values.end(); ++i) {
+            Parallelogram value;
+            std::stringstream ss(*i);
+            ss >> value.o.x;
+            ss >> value.o.y;
+            ss >> value.o.z;
+            ss >> value.u.x;
+            ss >> value.u.y;
+            ss >> value.u.z;
+            ss >> value.v.x;
+            ss >> value.v.y;
+            ss >> value.v.z;
+            values.push_back(value);
+        }
+        return true;
+    }
+    else if (!opt.defaultValue.empty()) {
+        Parallelogram value;
+        std::stringstream ss(opt.defaultValue);
+        ss >> value.o.x;
+        ss >> value.o.y;
+        ss >> value.o.z;
+        ss >> value.u.x;
+        ss >> value.u.y;
+        ss >> value.u.z;
+        ss >> value.v.x;
+        ss >> value.v.y;
+        ss >> value.v.z;
+        values.push_back(value);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
 bool Environment::getStringValues(const std::string& name, std::vector<std::string>& values) {
     Option opt;
     if (!findOption(name, opt)) return false;
@@ -652,6 +743,21 @@ bool Environment::readEnvFile(const std::string& filename) {
                             j->values.push_back(value);
                         }
                         i += 11;
+                        break;
+                    }
+
+                    case OPT_PARALLELOGRAM: {
+                        if (i + 9 >= words.size() || !filterValue(words[i + 1] + " " + words[i + 2] + " " + words[i + 3] + " " +
+                            words[i + 4] + " " + words[i + 5] + " " + words[i + 6] + " " + words[i + 7] + " " + words[i + 8] + " " + words[i + 9], value, OPT_PARALLELOGRAM)) {
+                            std::cerr << "Mismatch in vector variable " <<
+                                optionName << " in environment file '" << filename << "' (line " << lineNumber << ")." << std::endl;
+                            in.close();
+                            return false;
+                        }
+                        else {
+                            j->values.push_back(value);
+                        }
+                        i += 9;
                         break;
                     }
 

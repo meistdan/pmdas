@@ -159,10 +159,10 @@ namespace sutil
 
     void Denoiser::exec(CUDAOutputBuffer<float4>& input_buffer, CUDAOutputBuffer<float4>& output_buffer)
     {
-        SUTIL_ASSERT(m_width == input_buffer.width());
-        SUTIL_ASSERT(m_height == input_buffer.height());
-        SUTIL_ASSERT(m_width == output_buffer.width());
-        SUTIL_ASSERT(m_height == output_buffer.height());
+        SUTIL_ASSERT(static_cast<int32_t>(m_width) == input_buffer.width());
+        SUTIL_ASSERT(static_cast<int32_t>(m_height) == input_buffer.height());
+        SUTIL_ASSERT(static_cast<int32_t>(m_width) == output_buffer.width());
+        SUTIL_ASSERT(static_cast<int32_t>(m_height) == output_buffer.height());
 
         m_inputs[0].data = reinterpret_cast<CUdeviceptr>(input_buffer.map());
         m_inputs[0].width = input_buffer.width();

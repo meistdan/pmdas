@@ -128,8 +128,6 @@ extern "C" __global__ void __raygen__pinhole()
         //
         whitted::PayloadRadiance payload;
         payload.result = make_float3(0.0f);
-        payload.importance = 1.0f;
-        payload.depth = 0.0f;
 
         traceRadiance(whitted::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset
@@ -233,8 +231,6 @@ extern "C" __global__ void __raygen__pinhole_mdas_dof()
     //
     whitted::PayloadRadiance payload;
     payload.result = make_float3(0.0f);
-    payload.importance = 1.0f;
-    payload.depth = 0.0f;
 
     traceRadiance(whitted::params.handle, ray_origin, ray_direction,
         0.01f,  // tmin       // TODO: smarter offset
@@ -278,8 +274,6 @@ extern "C" __global__ void __raygen__pinhole_mdas_mb()
     //
     whitted::PayloadRadiance payload;
     payload.result = make_float3(0.0f);
-    payload.importance = 1.0f;
-    payload.depth = 0.0f;
 
     traceRadiance(whitted::params.handle, ray_origin, ray_direction,
         0.01f,  // tmin       // TODO: smarter offset

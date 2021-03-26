@@ -30,7 +30,6 @@
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 
-#include <cuda/whitted.h>
 #include <sutil/Exception.h>
 #include <sutil/Matrix.h>
 #include <sutil/Quaternion.h>
@@ -266,15 +265,15 @@ void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3&
 {
     // Material
     MaterialData::Pbr mtl;
-    mtl.base_color = -make_float4(color, 1.0f);
+    mtl.base_color = make_float4(color, -1.0f);
     scene.addMaterial(mtl);
 
     // Vertices
     std::vector<float3> vertices;
     vertices.push_back(o);
     vertices.push_back(o + u);
-    vertices.push_back(o + v);
     vertices.push_back(o + u + v);
+    vertices.push_back(o + v);
     
     BufferView vertView;
     vertView.data = 0;
@@ -283,10 +282,10 @@ void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3&
     std::vector<int> indices;
     indices.push_back(0);
     indices.push_back(1);
-    indices.push_back(3);
+    indices.push_back(2);
     indices.push_back(0);
+    indices.push_back(2);
     indices.push_back(3);
-    indices.push_back(4);
     
     // Box
     Aabb box;
@@ -320,14 +319,14 @@ void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3&
     // Buffer views
     BufferView vertBufferView;
     vertBufferView.data = buffer;
-    vertBufferView.elmt_byte_size = sizeof(float3);
+    vertBufferView.elmt_byte_size = sizeof(float);
     vertBufferView.byte_stride = sizeof(float3);
     vertBufferView.count = vertices.size();
 
     BufferView indBufferView;
     indBufferView.data = buffer + vertices_size_align;
     indBufferView.elmt_byte_size = sizeof(int);
-    indBufferView.byte_stride = sizeof(int);
+    indBufferView.byte_stride = 3 * sizeof(int);
     indBufferView.count = indices.size();
 
     // Mesh
@@ -399,7 +398,7 @@ void loadEnvironmentMap(const std::string& filename, Scene& scene)
 }
 
 
-void loadScene( const std::string& filename, Scene& scene, bool emissive )
+void loadScene( const std::string& filename, Scene& scene )
 {
     //scene.cleanup();
     size_t material_offset = scene.materials().size();
@@ -490,7 +489,6 @@ void loadScene( const std::string& filename, Scene& scene, bool emissive )
             {
                 const tinygltf::ColorValue c = base_color_it->second.ColorFactor();
                 mtl.base_color = make_float4_from_double( c[0], c[1], c[2], c[3] );
-                if (emissive) mtl.base_color.w = -mtl.base_color.w;
                 std::cerr
                     << "\tBase color: ("
                     << mtl.base_color.x << ", "
@@ -1421,6 +1419,11 @@ void Scene::createPTXModule()
     {
         module_name = "path.cu";
         m_pipeline_compile_options.numPayloadValues = path::NUM_PAYLOAD_VALUES;
+    }
+    else if (m_trace_type == TRACE_TYPE_DIRECT_LIGHTING)
+    {
+        module_name = "direct.cu";
+        m_pipeline_compile_options.numPayloadValues = direct::NUM_PAYLOAD_VALUES;
     }
     else
     {

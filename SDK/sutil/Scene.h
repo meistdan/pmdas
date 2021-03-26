@@ -31,6 +31,7 @@
 #include <cuda/BufferView.h>
 #include <cuda/MaterialData.h>
 #include <cuda/ao.h>
+#include <cuda/direct.h>
 #include <cuda/path.h>
 #include <cuda/whitted.h>
 #include <sutil/Aabb.h>
@@ -62,7 +63,8 @@ public:
     {
         TRACE_TYPE_WHITTED = 0,
         TRACE_TYPE_AMBIENT_OCCLUSION = 1,
-        TRACE_TYPE_PATH_TRACING = 2
+        TRACE_TYPE_PATH_TRACING = 2,
+        TRACE_TYPE_DIRECT_LIGHTING = 3
     };
 
     enum SamplingType
@@ -187,7 +189,7 @@ private:
 
 SUTILAPI void loadAreaLight(Scene& scene, const float3& o, const float3& u, const float3& v, const float3& color);
 SUTILAPI void loadEnvironmentMap(const std::string& filename, Scene& scene);
-SUTILAPI void loadScene( const std::string& filename, Scene& scene, bool emissive = false );
+SUTILAPI void loadScene( const std::string& filename, Scene& scene );
 
 } // end namespace sutil
 

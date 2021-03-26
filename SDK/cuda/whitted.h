@@ -89,8 +89,7 @@ struct LaunchParams
 struct PayloadRadiance
 {
     float3 result;
-    float  importance;
-    int    depth;
+    int    pad;
 };
 
 

@@ -62,10 +62,10 @@ struct Light
 
     struct Area
     {
+        float3   color      CONST_STATIC_INIT({ 5.0f, 5.0f, 5.0f });
         float3   o          CONST_STATIC_INIT({});
         float3   u          CONST_STATIC_INIT({});
         float3   v          CONST_STATIC_INIT({});
-        float3   color      CONST_STATIC_INIT({ 5.0f, 5.0f, 5.0f });
     };
 
     Type  type;
@@ -75,6 +75,6 @@ struct Light
         Point   point;
         Distant distant;
         Ambient ambient;
-        //Area    area;
+        Area    area;
     };
 };
