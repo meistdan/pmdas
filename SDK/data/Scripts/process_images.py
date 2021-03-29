@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 home_drive = "C:/Users/meist/projects"
 base_dir = home_drive + "/optix/SDK/data/"
@@ -23,6 +24,7 @@ if not (os.path.exists(highres_dir)):
 p0 = "%.0f"
 p2 = "%.2f"
 s = "%.2e"
+color_map = 'viridis'
 
 
 def read_image(filename):
@@ -43,8 +45,22 @@ def crop_image(img, ox, oy, w, h, bw, bwc, col):
     return img, crop_img
 
 
-def mse(img0, img1):
-    return (np.subtract(img0, img1) ** 2).mean()
+def mse(ref, img):
+    return np.subtract(ref, img) ** 2
+
+
+def rel_mse(ref, img):
+    return (np.subtract(ref, img) ** 2) / ((ref ** 2) + 1.0e-2)
+
+
+def falsecolor(error_img):
+    cmap = plt.get_cmap(color_map)
+    mean = np.mean(error_img, axis=2)
+    min_val = 0
+    # max_val = 1.0e-3
+    max_val = mean
+    val = np.clip((mean - min_val) / (max_val - min_val + 1.0e-2), 0, 1)
+    return cmap(val)
 
 
 def get_values(key, filename):
@@ -89,10 +105,26 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     mdas_image = read_image(mdas_image_filename)
     mc_image_filename = os.path.join(test_dir, mc_test_name + ".exr")
     mc_image = read_image(mc_image_filename)
+    mdas_image_denoised_filename = os.path.join(test_dir, mdas_test_name + "-denoised.exr")
+    mdas_image_denoised = read_image(mdas_image_denoised_filename)
+    mc_image_denoised_filename = os.path.join(test_dir, mc_test_name + "-denoised.exr")
+    mc_image_denoised = read_image(mc_image_denoised_filename)
+    mdas_image_density_filename = os.path.join(test_dir, mdas_test_name + "-density.exr")
+    mdas_image_density = read_image(mdas_image_density_filename)
 
     # error
-    mdas_error = mse(ref_image, mdas_image)
-    mc_error = mse(ref_image, mc_image)
+    mdas_mse_image = mse(ref_image, mdas_image)
+    mdas_mse = np.mean(mdas_mse_image)
+    mdas_mse_image = falsecolor(mdas_mse_image)
+    mc_mse_image = mse(ref_image, mc_image)
+    mc_mse = np.mean(mc_mse_image)
+    mc_mse_image = falsecolor(mc_mse_image)
+    mdas_relmse_image = rel_mse(ref_image, mdas_image)
+    mdas_relmse = np.mean(mdas_relmse_image)
+    mdas_relmse_image = falsecolor(mdas_relmse_image)
+    mc_relmse_image = rel_mse(ref_image, mc_image)
+    mc_relmse = np.mean(mc_relmse_image.mean())
+    mc_relmse_image = falsecolor(mc_relmse_image)
 
     # time and samples
     mdas_log_filename = os.path.join(test_dir, mdas_test_name + ".exr.log")
@@ -128,18 +160,27 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     out_file.write(mdas_test_name + "\n")
     out_file.write(str(p2 % mdas_spp_avg) + " samples per pixel\\\\\n")
     out_file.write("Render time " + str(p0 % mdas_total_time) + " ms\\\\\n")
-    out_file.write("MSE " + str(s % mdas_error) + "\n")
+    out_file.write("MSE " + str(s % mdas_mse) + "\n")
+    out_file.write("RelMSE " + str(s % mdas_relmse) + "\n")
     out_file.write("\n")
     out_file.write(mc_test_name + "\n")
     out_file.write(str(mc_spp) + " samples per pixel\\\\\n")
     out_file.write("Render time " + str(p0 % mc_total_time) + " ms\\\\\n")
-    out_file.write("MSE " + str(s % mc_error) + "\n")
+    out_file.write("MSE " + str(s % mc_mse) + "\n")
+    out_file.write("RelMSE " + str(s % mc_relmse) + "\n")
     out_file.write("\n")
 
     # hdr to ldr
     ref_image_ldr = 255 * np.clip(ref_image ** (1 / gamma), 0, 1)
     mdas_image_ldr = 255 * np.clip(mdas_image ** (1 / gamma), 0, 1)
     mc_image_ldr = 255 * np.clip(mc_image ** (1 / gamma), 0, 1)
+    mdas_image_denoised_ldr = 255 * np.clip(mdas_image_denoised ** (1 / gamma), 0, 1)
+    mc_image_denoised_ldr = 255 * np.clip(mc_image_denoised ** (1 / gamma), 0, 1)
+    mdas_image_density_ldr = 255 * np.clip(mdas_image_density ** (1 / gamma), 0, 1)
+    mdas_mse_image_ldr = 255 * mdas_mse_image
+    mc_mse_image_ldr = 255 * mc_mse_image
+    mdas_relmse_image_ldr = 255 * mdas_relmse_image
+    mc_relmse_image_ldr = 255 * mc_relmse_image
 
     # crop
     col0 = [35, 51, 239]
@@ -157,6 +198,13 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(highres_dir, scene + "-ref.png"), ref_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene + "-mdas.png"), mdas_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene + "-mc.png"), mc_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mdas-denoised.png"), mdas_image_denoised_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mc-denoised.png"), mc_image_denoised_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mdas-mse.png"), mdas_mse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mc-mse.png"), mc_mse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mdas-relmse.png"), mdas_relmse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mc-relmse.png"), mc_relmse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene + "-mdas-density.png"), mdas_image_density_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene + "-closeup0-ref.png"), ref_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene + "-closeup1-ref.png"), ref_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene + "-closeup0-mdas.png"), mdas_image_ldr_closeup0)
@@ -171,11 +219,25 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     ref_image_ldr_lowres = cv2.resize(ref_image_ldr, dim_lowres)
     mdas_image_ldr_lowres = cv2.resize(mdas_image_ldr, dim_lowres)
     mc_image_ldr_lowres = cv2.resize(mc_image_ldr, dim_lowres)
+    mdas_image_denoised_ldr_lowres = cv2.resize(mdas_image_denoised_ldr, dim_lowres)
+    mc_image_denoised_ldr_lowres = cv2.resize(mc_image_denoised_ldr, dim_lowres)
+    mdas_image_density_ldr_lowres = cv2.resize(mdas_image_density_ldr, dim_lowres)
+    mdas_mse_image_ldr_lowres = cv2.resize(mdas_mse_image_ldr, dim_lowres)
+    mc_mse_image_ldr_lowres = cv2.resize(mc_mse_image_ldr, dim_lowres)
+    mdas_relmse_image_ldr_lowres = cv2.resize(mdas_relmse_image_ldr, dim_lowres)
+    mc_relmse_image_ldr_lowres = cv2.resize(mc_relmse_image_ldr, dim_lowres)
 
     # write lowres ldr
     cv2.imwrite(os.path.join(lowres_dir, scene + "-ref.png"), ref_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-mdas.png"), mdas_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-mc.png"), mc_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mdas-denoised.png"), mdas_image_denoised_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mc-denoised.png"), mc_image_denoised_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mdas-mse.png"), mdas_mse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mc-mse.png"), mc_mse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mdas-relmse.png"), mdas_relmse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mc-relmse.png"), mc_relmse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene + "-mdas-density.png"), mdas_image_density_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup0-ref.png"), ref_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup1-ref.png"), ref_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup0-mdas.png"), mdas_image_ldr_closeup0)
@@ -183,7 +245,6 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup0-mc.png"), mc_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene + "-closeup1-mc.png"), mc_image_ldr_closeup1)
 
-    # density, denoised, flip
 
 # scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_factor, error_threshold, gamma, rect0, rect1
 

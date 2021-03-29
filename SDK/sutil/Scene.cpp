@@ -1472,6 +1472,8 @@ void Scene::createProgramGroups()
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
         else if (m_trace_type == TRACE_TYPE_PATH_TRACING && m_sampling_type == SAMPLING_TYPE_MDAS)
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
+        else if (m_trace_type == TRACE_TYPE_DIRECT_LIGHTING && m_sampling_type == SAMPLING_TYPE_MDAS)
+            raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole_mdas";
         else
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__pinhole";
 
