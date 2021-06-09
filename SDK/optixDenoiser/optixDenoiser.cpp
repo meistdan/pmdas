@@ -50,10 +50,10 @@
 void printUsageAndExit( const std::string& argv0 )
 {
     std::cout
-        << "Usage  : " << argv0 << " [options] color.exr\n"
+        << "Usage  : " << argv0 << " [options] color.pfm\n"
         << "Options: -n | --normal <normal.exr>\n"
         << "         -a | --albedo <albedo.exr>\n"
-        << "         -o | --out    <out.exr> Defaults to 'denoised.exr'\n"
+        << "         -o | --out    <out.exr> Defaults to 'denoised.pfm'\n"
         << std::endl;
     exit(0);
 }
@@ -67,7 +67,7 @@ int32_t main( int32_t argc, char** argv )
 
     std::string normal_filename;
     std::string albedo_filename;
-    std::string output_filename = "denoised.exr";
+    std::string output_filename = "denoised.pfm";
 
     for( int32_t i = 1; i < argc-1; ++i )
     {

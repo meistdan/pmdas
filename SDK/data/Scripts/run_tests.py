@@ -4,7 +4,7 @@ home_drive = "C:/Users/meist/projects"
 optix_bin_dir = home_drive + "/optix/SDK/build/bin/Release/"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test")
+out_dir = os.path.join(base_dir, "test-reconstruction")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
@@ -12,21 +12,24 @@ os.chdir(optix_bin_dir)
 ref_enabled = False
 mc_enabled = False
 mdas_enabled = True
-testing_passes = 2
+testing_passes = 1
 
 scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast", "cornell-box"]
 bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.exe", "optixPathTracer.exe", "optixDirectLighting.exe"]
 bin_labels = ["mb", "dof", "ao", "pt", "dl"]
-bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4]
-ref_spps = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 8192, 8192, 8192, 8192, 8192]
+bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
+ref_spp = 65536
 
-scene_indices = [0, 1, 2, 3, 4, 8, 11, 12]
-mc_spps = list(range(1, 33))
-spps = [8, 16]
-extra_img_bits = [6, 8]
-morton_bits = [2, 1]
-scale_factors = [1/16, 1/8, 1/4, 1/2, 1, 2, 4]
-error_thresholds = [0.01, 0.025, 0.05, 0.1, 0.25]
+# scene_indices = [0, 1, 2, 4, 8, 10, 11]
+scene_indices = [8, 11]
+mc_spps = list(range(1, 65))
+spps = [8]
+# extra_img_bits = [4, 6, 8, 10]
+# morton_bits = [3, 2, 1, 0]
+extra_img_bits = [9]
+morton_bits = [0]
+scale_factors = [1/16, 1/8, 1/4, 1/2, 1, 2]
+error_thresholds = [0.01, 0.025, 0.1, 0.25, 0.5]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
@@ -93,7 +96,7 @@ def run(scene, bin, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, er
 
     # execute
     print(test_name)
-    # os.system(bin_full + " " + test_filename_full)
+    os.system(bin_full + " " + test_filename_full)
 
 
 # scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, testing_pass, mdas, ref
@@ -105,7 +108,7 @@ for scene_index in scene_indices:
     bin = bins[bin_index]
 
     if ref_enabled:
-        spp = ref_spps[scene_index]
+        spp = ref_spp
         run(scene, bin, bin_label, spp, 0, 0, 0, 0, 0, False, True)
 
     for testing_pass in range(testing_passes):

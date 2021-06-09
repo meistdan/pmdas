@@ -86,6 +86,7 @@ extern "C" __global__ void __raygen__pinhole()
         {
             payload.r0 = rnd(seed);
             payload.r1 = rnd(seed);
+            payload.depth = depth;
 
             traceRadiance(path::params.handle, ray_origin, ray_direction,
                 0.0f,   // tmin
@@ -154,6 +155,7 @@ extern "C" __global__ void __raygen__pinhole_mdas()
     int depth = 0;
     for (;;)
     {
+        payload.depth = depth;
         if (depth < path::params.max_depth) {
             sample = *(++sample_ptr);
             payload.r0 = sample.x;
@@ -308,8 +310,9 @@ extern "C" __global__ void __closesthit__radiance()
                     const float3 diff = (1.0f - F) * diff_color / M_PIf;
                     const float3 spec = F * G_vis * D;
 
-                    payload->radiance += payload->attenuation * opacity * 
-                        light.point.color * light.point.intensity * N_dot_L * (diff + spec);
+                    if (payload->depth > 0)
+                        payload->radiance += payload->attenuation * opacity * 
+                            light.point.color * light.point.intensity * N_dot_L * (diff + spec);
                 }
             }
         }

@@ -93,7 +93,8 @@ struct PayloadRadiance
     int          done;
     float        r0;
     float        r1;
-    int4          pad;
+    int          depth;
+    int3         pad;
 };
 
 

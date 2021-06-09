@@ -346,6 +346,43 @@ ImageBuffer loadImage( const char* fname, int32_t force_components )
 
         free( data );
     }
+    else if (ext == "pfm" || ext == "PFM")
+    {
+        if (force_components != 4 && force_components != 0 && force_components != 3)
+            throw Exception("sutil::loadImage(): PNG loading with force_components not implemented");
+
+        
+        std::string line;
+        std::ifstream in(filename, std::ios::binary);
+        std::getline(in, line);
+        std::getline(in, line);
+        std::stringstream ss(line);
+        ss >> image.width >> image.height;
+        std::getline(in, line);
+        std::vector<float3> data(image.width * image.height);
+        in.read(reinterpret_cast<char*>(data.data()), sizeof(float3)* image.width* image.height);
+        in.close();
+
+        if (force_components == 4 || force_components == 0)
+        {
+            image.data = new float4[image.width * image.height];
+            image.pixel_format = FLOAT4;
+            for (int32_t i = 0; i < static_cast<int32_t>(image.width * image.height); ++i)
+            {
+                reinterpret_cast<float4*>(image.data)[i].x = data[i].x;
+                reinterpret_cast<float4*>(image.data)[i].y = data[i].y;
+                reinterpret_cast<float4*>(image.data)[i].z = data[i].z;
+                reinterpret_cast<float4*>(image.data)[i].w = 1.0f;
+            }
+        }
+        else // force_components == 3
+        {
+            image.data = new float3[image.width * image.height];
+            image.pixel_format = FLOAT3;
+            memcpy(image.data, data.data(), sizeof(float3) * image.width * image.height);
+        }
+
+    }
     else
     {
         throw Exception( ( "sutil::loadImage(): Failed unsupported filetype '" + ext + "'" ).c_str() );
@@ -704,6 +741,72 @@ void saveImage( const char* fname, const ImageBuffer& image, bool disable_srgb_c
             default:
             {
                 throw Exception( "sutil::saveImage: Unrecognized image buffer pixel format.\n" );
+            }
+        }
+    }
+    else if (ext == "PFM" || ext == "pfm")
+    {
+        const int32_t width = image.width;
+        const int32_t height = image.height;
+
+        switch (image.pixel_format)
+        {
+            case BufferImageFormat::UNSIGNED_BYTE4:
+            {
+                throw Exception("sutil::saveImage(): saving of uchar4 images to PFM not implemented yet");
+            }
+
+            case BufferImageFormat::FLOAT3:
+            {
+                std::vector<float> pix(width * height * 3);
+                for (int j = height - 1; j >= 0; --j)
+                {
+                    for (int i = 0; i < width; ++i)
+                    {
+                        //const int32_t dst_idx = 3 * width * (height - j - 1) + 3 * i;
+                        const int32_t dst_idx = 3 * width * j + 3 * i;
+                        const int32_t src_idx = 4 * width * j + 3 * i;
+                        pix[dst_idx + 0] = reinterpret_cast<float*>(image.data)[src_idx + 0];
+                        pix[dst_idx + 1] = reinterpret_cast<float*>(image.data)[src_idx + 1];
+                        pix[dst_idx + 2] = reinterpret_cast<float*>(image.data)[src_idx + 2];
+                    }
+                }
+
+                std::ofstream out(filename, std::ios::out | std::ios::binary);
+                out << "PF" << std::endl;
+                out << image.width << " " << image.height << std::endl;
+                out << "-1.0" << std::endl;
+                out.write(reinterpret_cast<const char*>(pix.data()), sizeof(float) * width * height * 3);
+                out.close();
+            } break;
+
+            case BufferImageFormat::FLOAT4:
+            {
+                std::vector<float> pix(width * height * 3);
+                for (int j = height - 1; j >= 0; --j)
+                {
+                    for (int i = 0; i < width; ++i)
+                    {
+                        //const int32_t dst_idx = 3 * width * (height - j - 1) + 3 * i;
+                        const int32_t dst_idx = 3 * width * j + 3 * i;
+                        const int32_t src_idx = 4 * width * j + 4 * i;
+                        pix[dst_idx + 0] = reinterpret_cast<float*>(image.data)[src_idx + 0];
+                        pix[dst_idx + 1] = reinterpret_cast<float*>(image.data)[src_idx + 1];
+                        pix[dst_idx + 2] = reinterpret_cast<float*>(image.data)[src_idx + 2];
+                    }
+                }
+
+                std::ofstream out(filename, std::ios::out | std::ios::binary);
+                out << "PF" << std::endl;
+                out << image.width << " " << image.height << std::endl;
+                out << "-1.0" << std::endl;
+                out.write(reinterpret_cast<const char*>(pix.data()), sizeof(float) * width * height * 3);
+                out.close();
+            } break;
+
+            default:
+            {
+                throw Exception("sutil::saveImage: Unrecognized image buffer pixel format.\n");
             }
         }
     }
