@@ -29,7 +29,7 @@
 
 #include <cuda/LocalGeometry.h>
 #include <cuda/helpers.h>
-#include <cuda/random.h>
+#include <cuda/sampler.h>
 #include <sutil/vec_math.h>
 
 #include "whitted_cuda.h"
@@ -46,24 +46,25 @@
 
 extern "C" __global__ void __raygen__pinhole()
 {
-    const uint3  launch_idx     = optixGetLaunchIndex();
-    const uint3  launch_dims    = optixGetLaunchDimensions();
-    const float3 eye            = whitted::params.eye;
-    const float3 U              = whitted::params.U;
-    const float3 V              = whitted::params.V;
-    const float3 W              = whitted::params.W;
+    const uint3  launch_idx = optixGetLaunchIndex();
+    const uint3  launch_dims = optixGetLaunchDimensions();
+    const float3 eye = whitted::params.eye;
+    const float3 U = whitted::params.U;
+    const float3 V = whitted::params.V;
+    const float3 W = whitted::params.W;
     const int    subframe_index = whitted::params.subframe_index;
 
     //
     // Generate camera ray
     //
-    unsigned int seed = tea<4>( launch_idx.y * launch_dims.x + launch_idx.x, subframe_index );
+    unsigned int seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframe_index);
+    Sampler sampler(seed);
 
     float3 result = make_float3(0.0f);
     int j = whitted::params.samples_per_launch;
     do
     {
-        const float2 subpixel_jitter = make_float2(rnd(seed), rnd(seed));
+        const float2 subpixel_jitter = make_float2(sampler.get(), sampler.get());
         const float2 d =
             2.0f
             * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
@@ -78,7 +79,7 @@ extern "C" __global__ void __raygen__pinhole()
         if (whitted::params.lens_radius > 0.0f)
         {
             // Map uniform random numbers to $[-1,1]^2$
-            float2 rnd2 = make_float2(rnd(seed), rnd(seed));
+            float2 rnd2 = make_float2(sampler.get(), sampler.get());
             float2 offset = 2.f * rnd2 - make_float2(1, 1);
 
             // Handle degeneracy at the origin
@@ -132,11 +133,14 @@ extern "C" __global__ void __raygen__pinhole()
         traceRadiance(whitted::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset
             1e16f,  // tmax
-            rnd(seed),
+            sampler.get(),
             &payload);
 
         // Add result
         result += payload.result;
+
+        // Update sampler
+        sampler.next_sample();
 
     } while ( --j );
 

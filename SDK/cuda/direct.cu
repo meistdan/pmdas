@@ -29,7 +29,7 @@
 
 #include <cuda/LocalGeometry.h>
 #include <cuda/helpers.h>
-#include <cuda/random.h>
+#include <cuda/sampler.h>
 #include <sutil/vec_math.h>
 
 #include "direct_cuda.h"
@@ -59,12 +59,14 @@ extern "C" __global__ void __raygen__pinhole()
     // Generate camera ray
     //
     unsigned int seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframe_index);
+    Sampler sampler(seed);
 
     float3 result = make_float3(0.0f);
     int j = direct::params.samples_per_launch;
     do
     {
-        const float2 subpixel_jitter = make_float2(rnd(seed), rnd(seed));
+        const unsigned int sample_index = subframe_index * direct::params.samples_per_launch + j - 1;
+        const float2 subpixel_jitter = make_float2(sampler.get(), sampler.get());
         const float2 d =
             2.0f
             * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
@@ -78,8 +80,8 @@ extern "C" __global__ void __raygen__pinhole()
         //
         direct::PayloadRadiance payload;
         payload.radiance = make_float3(0.0f);
-        payload.r0 = rnd(seed);
-        payload.r1 = rnd(seed);
+        payload.r0 = sampler.get();
+        payload.r1 = sampler.get();
 
         traceRadiance(direct::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset
@@ -88,6 +90,9 @@ extern "C" __global__ void __raygen__pinhole()
 
         // Add result
         result += payload.radiance;
+
+        // Update sampler
+        sampler.next_sample();
 
     } while (--j);
 

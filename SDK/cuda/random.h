@@ -70,3 +70,20 @@ static __host__ __device__ __inline__ unsigned int rot_seed( unsigned int seed, 
 {
     return seed ^ frame;
 }
+
+// Halton
+static __host__ __device__ __inline__ float halton(int dim, int i)
+{
+    const int primes[] = { 2, 3, 5, 7, 11, 13 };
+    int base = primes[dim];
+    float r = 0;
+    float f = 1.0f / base;
+    int j = i;
+    while (j > 0)
+    {
+        r += f * (j % base);
+        j = floor(float(j) / base);
+        f /= base;
+    }
+    return r;
+}

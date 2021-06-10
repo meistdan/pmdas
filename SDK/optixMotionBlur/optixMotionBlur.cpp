@@ -837,6 +837,8 @@ int main(int argc, char* argv[])
             if (ext == "EXR" || ext == "exr")
             {
                 buffer.data = output_buffer.getHostPointer();
+                for (int i = 0; i < buffer.width * buffer.height; ++i)
+                    ((float4*)buffer.data)[i].w = 1.0f;
                 buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
             }
             sutil::saveImage(outfile.c_str(), buffer, false);

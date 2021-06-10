@@ -232,7 +232,7 @@ namespace mdas {
         KDTree<Point>::Node* nodes
     ) {
 
-        // Node index.
+        // Node index
         const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
         if (nodeIndex < numberOfInteriors) {
@@ -287,7 +287,7 @@ namespace mdas {
         KDTree<Point>::Node* nodes
     ) {
 
-        // Sample index.
+        // Sample index
         const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
         if (nodeIndex < numberOfNodes) {
@@ -319,10 +319,10 @@ namespace mdas {
         float3* sampleValues
     ) {
 
-        // Leaf index.
+        // Leaf index
         const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-        // Warp thread index.
+        // Warp thread index
         const int warpThreadIndex = threadIdx.x & 31;
 
         // Error
@@ -416,10 +416,10 @@ namespace mdas {
         unsigned int* seeds
     ) {
 
-        // Leaf index.
+        // Leaf index
         const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-        // Warp thread index.
+        // Warp thread index
         const int warpThreadIndex = threadIdx.x & 31;
 
         // Stack
@@ -843,9 +843,119 @@ namespace mdas {
 
             // Store the result
             pixels[pixIdx] = make_float4(value, 1.0f);
-            pixelsBytes[pixIdx] = make_color(value);
+            //pixelsBytes[pixIdx] = make_color(value);
 
         } while (true);
+
+    }
+
+    template <typename Point>
+    __global__ void integrateSplattingKernel(
+        int numberOfLeaves,
+        int width,
+        int height,
+        float scaleX,
+        float scaleY,
+        int* leafIndices,
+        float3* sampleValues,
+        float4* pixels,
+        uchar4* pixelsBytes,
+        AABB<Point>* nodeBoxes
+    ) {
+
+        // Leaf index
+        const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if (leafIndex < numberOfLeaves) {
+
+            // Pixel step
+            float2 pixelStep;
+            pixelStep.x = scaleX / width;
+            pixelStep.y = scaleY / height;
+
+            // Node
+            int nodeIndex = leafIndices[leafIndex];
+            float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
+            const typename KDTree<Point>::Node leaf = *(typename KDTree<Point>::Node*) & tmp;
+
+            // Average value
+            float3 sampleValue = make_float3(0.0f);
+            int sampleCount = 0;
+            for (int i = 0; i < 4; ++i) {
+                if (leaf.indices[i] >= 0) {
+                    sampleValue += sampleValues[leaf.indices[i]];
+                    sampleCount++;
+                }
+            }
+            sampleValue /= float(sampleCount);
+
+            // Leaf box
+            AABB<Point> box = nodeBoxes[nodeIndex];
+
+            // Pixels covered by node's bounding box
+            int x0 = box.mn[0] * (width / scaleX);
+            int x1 = box.mx[0] * (width / scaleX);
+            int y0 = box.mn[1] * (height / scaleY);
+            int y1 = box.mx[1] * (height / scaleY);
+            x1 = min(x1 + 1, width);
+            y1 = min(y1 + 1, height);
+
+            x0 = 0;
+            x1 = width;
+            y0 = 0;
+            y1 = height;
+
+            // Pixel area
+            float pixArea = (scaleX * scaleY) / float(width * height);
+
+            // Pixel bounding box
+            float pMinX, pMaxX, pMinY, pMaxY;
+            pMinY = y0 * scaleY / float(height);
+            pMaxY = pMinY + pixelStep.y;
+
+            // Splatting
+            for (int y = y0; y < y1; ++y) {
+
+                pMinX = x0 * scaleX / float(width);
+                pMaxX = pMinX + pixelStep.x;
+
+                for (int x = x0; x < x1; ++x) {
+
+                    // Intersect the pixel volume with the leaf
+                    const float clox = fmax(pMinX, box.mn[0]);
+                    const float chix = fmin(pMaxX, box.mx[0]);
+                    const float cloy = fmax(pMinY, box.mn[1]);
+                    const float chiy = fmin(pMaxY, box.mx[1]);
+
+                    if (clox < chix && cloy < chiy) {
+
+                        // Volume
+                        float volume = (chix - clox) * (chiy - cloy) * box.Volume()
+                            / ((box.mx[0] - box.mn[0]) * (box.mx[1] - box.mn[1]));
+
+                        // Add contribution
+                        int pixIndex = y * width + x;
+                        float3 value = sampleValue * volume / pixArea;
+                        atomicAdd(&pixels[pixIndex].x, value.x);
+                        atomicAdd(&pixels[pixIndex].y, value.y);
+                        atomicAdd(&pixels[pixIndex].z, value.z);
+
+
+                    }
+
+                    // Update pixel bounds
+                    pMinX = pMaxX;
+                    pMaxX += pixelStep.x;
+
+                }
+
+                // Update pixel bounds
+                pMinY = pMaxY;
+                pMaxY += pixelStep.y;
+
+            }
+
+        }
 
     }
 
@@ -1118,6 +1228,7 @@ namespace mdas {
     template <typename Point>
     void KDTree<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
 
+#if 0
         // Grid and block size
         const int desiredWarps = 720;
         dim3 blockSize(32, 4);
@@ -1143,6 +1254,26 @@ namespace mdas {
         // Launch
         integrateKernel<Point><<<gridSize, blockSize>>>(width, height, scaleX, scaleY, 
             sampleValues.Data(), pixels, pixelsBytes, nodeBoxes.Data());
+
+#else
+            
+        // Grid and block size
+        int minGridSize, blockSize;
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
+            integrateSplattingKernel<Point>, 0, 0);
+        int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
+
+        // Timer
+        cudaEvent_t start, stop;
+        if (logStats) {
+            cudaEventCreate(&start);
+            cudaEventCreate(&stop);
+            cudaEventRecord(start, 0);
+        }
+
+        integrateSplattingKernel<Point><<<gridSize, blockSize>>>(GetNumberOfLeaves(), width, height, scaleX, scaleY, 
+            leafIndices.Data(), sampleValues.Data(), pixels, pixelsBytes, nodeBoxes.Data());
+#endif
 
         // Elapsed time and cleanup
         if (logStats) {

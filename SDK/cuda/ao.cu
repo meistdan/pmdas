@@ -29,7 +29,7 @@
 
 #include <cuda/LocalGeometry.h>
 #include <cuda/helpers.h>
-#include <cuda/random.h>
+#include <cuda/sampler.h>
 #include <sutil/vec_math.h>
 
 #include "ao_cuda.h"
@@ -58,12 +58,14 @@ extern "C" __global__ void __raygen__pinhole()
     // Generate camera ray
     //
     unsigned int seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframe_index);
+    Sampler sampler(seed);
 
     float result = 0.0f;
     int j = ao::params.samples_per_launch;
     do
     {
-        const float2 subpixel_jitter = make_float2(rnd(seed), rnd(seed));
+        const unsigned int sample_index = subframe_index * ao::params.samples_per_launch + j - 1;
+        const float2 subpixel_jitter = make_float2(sampler.get(), sampler.get());
         const float2 d = 2.0f * make_float2((static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
             (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y)) - 1.0f;
         float3 ray_direction = normalize(d.x * U + d.y * V + W);
@@ -74,8 +76,8 @@ extern "C" __global__ void __raygen__pinhole()
         //
         ao::PayloadRadiance payload;
         payload.occluded = 0;
-        payload.r0 = rnd(seed);
-        payload.r1 = rnd(seed);
+        payload.r0 = sampler.get();
+        payload.r1 = sampler.get();
 
         ao::traceRadiance(ao::params.handle, ray_origin, ray_direction,
             0.01f,  // tmin       // TODO: smarter offset
@@ -84,6 +86,9 @@ extern "C" __global__ void __raygen__pinhole()
 
         // Add result
         result += payload.occluded == 0 ? 1.0f : 0.0f;
+
+        // Update sampler
+        sampler.next_sample();
 
     } while (--j);
 
