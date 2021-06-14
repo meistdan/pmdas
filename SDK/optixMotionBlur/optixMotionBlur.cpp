@@ -804,7 +804,7 @@ int main(int argc, char* argv[])
                 density_buffer.data = output_density_buffer.getHostPointer();
                 density_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
                 samplingDensityMdas(density_buffer);
-                sutil::saveImage(density_outfile.c_str(), density_buffer, false);
+                sutil::saveImage(density_outfile.c_str(), density_buffer, true);
             }
 
             // Denoising
@@ -822,7 +822,7 @@ int main(int argc, char* argv[])
             denoised_buffer.height = output_denoised_buffer.height();
             denoised_buffer.data = output_denoised_buffer.getHostPointer();
             denoised_buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
-            sutil::saveImage(denoised_outfile.c_str(), denoised_buffer, false);
+            sutil::saveImage(denoised_outfile.c_str(), denoised_buffer, true);
             std::cout << "Done" << std::endl;
 
             log.close();
@@ -837,11 +837,9 @@ int main(int argc, char* argv[])
             if (ext == "EXR" || ext == "exr")
             {
                 buffer.data = output_buffer.getHostPointer();
-                for (int i = 0; i < buffer.width * buffer.height; ++i)
-                    ((float4*)buffer.data)[i].w = 1.0f;
                 buffer.pixel_format = sutil::BufferImageFormat::FLOAT4;
             }
-            sutil::saveImage(outfile.c_str(), buffer, false);
+            sutil::saveImage(outfile.c_str(), buffer, true);
 
             if (output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP)
             {

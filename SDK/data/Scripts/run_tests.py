@@ -4,12 +4,12 @@ home_drive = "C:/Users/meist/projects"
 optix_bin_dir = home_drive + "/optix/SDK/build/bin/Release/"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test-reconstruction")
+out_dir = os.path.join(base_dir, "test-splatting")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
 
-ref_enabled = False
+ref_enabled = True
 mc_enabled = False
 mdas_enabled = True
 testing_passes = 1
@@ -18,15 +18,16 @@ scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "cryte
 bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.exe", "optixPathTracer.exe", "optixDirectLighting.exe"]
 bin_labels = ["mb", "dof", "ao", "pt", "dl"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
-ref_spp = 65536
+# ref_spp = 65536
+ref_spp = 1024
 
-# scene_indices = [0, 1, 2, 4, 8, 10, 11]
-scene_indices = [8, 11]
-mc_spps = list(range(1, 65))
+# scene_indices = [0, 1, 2, 8, 10, 11]
+scene_indices = [2]
+mc_spps = list(range(1, 33))
 spps = [8]
 # extra_img_bits = [4, 6, 8, 10]
 # morton_bits = [3, 2, 1, 0]
-extra_img_bits = [9]
+extra_img_bits = [10]
 morton_bits = [0]
 scale_factors = [1/16, 1/8, 1/4, 1/2, 1, 2]
 error_thresholds = [0.01, 0.025, 0.1, 0.25, 0.5]

@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 home_drive = "C:/Users/meist/projects"
 base_dir = home_drive + "/optix/SDK/data/"
 
-test_dir = os.path.join(base_dir, "test")
+test_dir = os.path.join(base_dir, "test-splatting")
 test_6D_dir = os.path.join(base_dir, "test-6D")
 
-out_dir = os.path.join(base_dir, "hpg21")
+out_dir = os.path.join(base_dir, "tmp")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 
@@ -209,6 +209,7 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     out_file.write("MSE " + str(s % mdas_mse) + " / ")
     out_file.write("RelMSE " + str(s % mdas_relmse) + "\n")
     out_file.write("Iterations " + str(mdas_total_iterations) + "\n")
+    out_file.write("Integrate time " + str(mdas_integrate_time) + " ms\n")
     out_file.write("\n")
     out_file.write(mc_test_name + "\n")
     out_file.write(str(mc_spp) + " samples per pixel\\\\\n")
@@ -469,7 +470,7 @@ run("pool", "mb", 8, 15, 1, 8, 0.125, 0.01, 2.2, [[686, 334], [50, 50]], [[234, 
 
 # cornell-box-pt-mdas-mb-1-eib-7-sf-0.125-et-0.01-spp-8
 # cornell-box-pt-mdas-mb-1-eib-7-sf-1-et-0.01-spp-8
-run("cornell-box", "pt", 8, 8, 1, 7, 1, 0.01, 2.2, [[540, 775], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [70, 187, 95], 64, 512, True, "", 0, -1, test_6D_dir)
+# run("cornell-box", "pt", 8, 8, 1, 7, 1, 0.01, 2.2, [[540, 775], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [70, 187, 95], 64, 512, True, "", 0, -1, test_6D_dir)
 
 # breakfast-pt-mdas-mb-0-eib-10-sf-0.0625-et-0.01-spp-8
 # run("breakfast", "pt", 8, 8, 0, 10, 0.0625, 0.01, 2.2, [[585, 655], [100, 75]], [[245, 335], [80, 60]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, -1, test_6D_dir)
@@ -477,5 +478,5 @@ run("cornell-box", "pt", 8, 8, 1, 7, 1, 0.01, 2.2, [[540, 775], [100, 100]], [[2
 
 # cornell-box-pt-mdas-mb-1-eib-7-sf-1-et-0.01-spp-8
 # cornell-box-pt-mdas-mb-2-eib-4-sf-0.125-et-0.025-spp-8
-run("cornell-box", "pt", 8, 8, 1, 7, 1, 0.01, 2.2, [[150, 160], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [-1, -1, -1], 512, 32, False, "scale-0", 0, 1.0e-2, test_6D_dir)
-run("cornell-box", "pt", 8, 8, 2, 4, 0.5, 0.025, 2.2, [[150, 160], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [-1, -1, -1], 512, 32, False, "scale-1", 0, 1.0e-2, test_6D_dir)
+# run("cornell-box", "pt", 8, 8, 1, 7, 1, 0.01, 2.2, [[150, 160], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [-1, -1, -1], 512, 32, False, "scale-0", 0, 1.0e-2, test_6D_dir)
+# run("cornell-box", "pt", 8, 8, 2, 4, 0.5, 0.025, 2.2, [[150, 160], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [-1, -1, -1], 512, 32, False, "scale-1", 0, 1.0e-2, test_6D_dir)

@@ -721,7 +721,7 @@ void saveImage( const char* fname, const ImageBuffer& image, bool disable_srgb_c
                         pix[dst_idx + 0] = reinterpret_cast<float*>(image.data)[src_idx + 0];
                         pix[dst_idx + 1] = reinterpret_cast<float*>(image.data)[src_idx + 1];
                         pix[dst_idx + 2] = reinterpret_cast<float*>(image.data)[src_idx + 2];
-                        pix[dst_idx + 3] = reinterpret_cast<float*>(image.data)[src_idx + 3];
+                        pix[dst_idx + 3] = disable_srgb_conversion ? 1.0f : reinterpret_cast<float*>(image.data)[src_idx + 3];
                     }
                 }
                 const char* err;

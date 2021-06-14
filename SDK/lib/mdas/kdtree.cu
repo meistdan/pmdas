@@ -859,7 +859,6 @@ namespace mdas {
         int* leafIndices,
         float3* sampleValues,
         float4* pixels,
-        uchar4* pixelsBytes,
         AABB<Point>* nodeBoxes
     ) {
 
@@ -893,17 +892,12 @@ namespace mdas {
             AABB<Point> box = nodeBoxes[nodeIndex];
 
             // Pixels covered by node's bounding box
-            int x0 = box.mn[0] * (width / scaleX);
-            int x1 = box.mx[0] * (width / scaleX);
-            int y0 = box.mn[1] * (height / scaleY);
-            int y1 = box.mx[1] * (height / scaleY);
+            int x0 = box.mn[0] * width / scaleX;
+            int x1 = box.mx[0] * width / scaleX;
+            int y0 = box.mn[1] * height / scaleY;
+            int y1 = box.mx[1] * height / scaleY;
             x1 = min(x1 + 1, width);
             y1 = min(y1 + 1, height);
-
-            x0 = 0;
-            x1 = width;
-            y0 = 0;
-            y1 = height;
 
             // Pixel area
             float pixArea = (scaleX * scaleY) / float(width * height);
@@ -940,7 +934,6 @@ namespace mdas {
                         atomicAdd(&pixels[pixIndex].y, value.y);
                         atomicAdd(&pixels[pixIndex].z, value.z);
 
-
                     }
 
                     // Update pixel bounds
@@ -955,6 +948,22 @@ namespace mdas {
 
             }
 
+        }
+
+    }
+
+    template <typename Point>
+    __global__ void convertToBytesKernel(
+        int numberOfPixels,
+        float4* pixels,
+        uchar4* pixelsBytes
+    ) {
+
+        // Pixel index
+        const int pixelIndex = blockDim.x * blockIdx.x + threadIdx.x;
+
+        if (pixelIndex < numberOfPixels) {
+            pixelsBytes[pixelIndex] = make_color(pixels[pixelIndex]);
         }
 
     }
@@ -1227,7 +1236,6 @@ namespace mdas {
 
     template <typename Point>
     void KDTree<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
-
 #if 0
         // Grid and block size
         const int desiredWarps = 720;
@@ -1256,7 +1264,10 @@ namespace mdas {
             sampleValues.Data(), pixels, pixelsBytes, nodeBoxes.Data());
 
 #else
-            
+        // Setup texture references
+        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
+        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
+
         // Grid and block size
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
@@ -1272,7 +1283,9 @@ namespace mdas {
         }
 
         integrateSplattingKernel<Point><<<gridSize, blockSize>>>(GetNumberOfLeaves(), width, height, scaleX, scaleY, 
-            leafIndices.Data(), sampleValues.Data(), pixels, pixelsBytes, nodeBoxes.Data());
+            leafIndices.Data(), sampleValues.Data(), pixels, nodeBoxes.Data());
+
+
 #endif
 
         // Elapsed time and cleanup
