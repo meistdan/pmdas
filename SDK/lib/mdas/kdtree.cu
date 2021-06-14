@@ -7,7 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
-#include "kdtree.h"
+#include "kdgrid.h"
 
 namespace mdas {
 
@@ -27,7 +27,7 @@ namespace mdas {
         EntrypointSentinel = 0x76543210,        // Bottom-most stack entry, indicating the end of traversal
     };
 
-    template KDTree<Point3>::KDTree(
+    template KDGrid<Point3>::KDGrid(
         int maxSamples,
         int candidatesNum,
         int bitsPerDim,
@@ -37,7 +37,7 @@ namespace mdas {
         float scaleY,
         std::ofstream* log
     );
-    template KDTree<Point4>::KDTree(
+    template KDGrid<Point4>::KDGrid(
         int maxSamples,
         int candidatesNum,
         int bitsPerDim,
@@ -47,7 +47,7 @@ namespace mdas {
         float scaleY,
         std::ofstream* log
     );
-    template KDTree<Point5>::KDTree(
+    template KDGrid<Point5>::KDGrid(
         int maxSamples,
         int candidatesNum,
         int bitsPerDim,
@@ -57,7 +57,7 @@ namespace mdas {
         float scaleY,
         std::ofstream* log
     );
-    template KDTree<Point6>::KDTree(
+    template KDGrid<Point6>::KDGrid(
         int maxSamples,
         int candidatesNum,
         int bitsPerDim,
@@ -68,40 +68,40 @@ namespace mdas {
         std::ofstream* log
     );
 
-    template void KDTree<Point3>::InitialSampling(void);
-    template void KDTree<Point4>::InitialSampling(void);
-    template void KDTree<Point5>::InitialSampling(void);
-    template void KDTree<Point6>::InitialSampling(void);
+    template void KDGrid<Point3>::InitialSampling(void);
+    template void KDGrid<Point4>::InitialSampling(void);
+    template void KDGrid<Point5>::InitialSampling(void);
+    template void KDGrid<Point6>::InitialSampling(void);
 
-    template void KDTree<Point3>::ComputeErrors(void);
-    template void KDTree<Point4>::ComputeErrors(void);
-    template void KDTree<Point5>::ComputeErrors(void);
-    template void KDTree<Point6>::ComputeErrors(void);
+    template void KDGrid<Point3>::ComputeErrors(void);
+    template void KDGrid<Point4>::ComputeErrors(void);
+    template void KDGrid<Point5>::ComputeErrors(void);
+    template void KDGrid<Point6>::ComputeErrors(void);
 
-    template void KDTree<Point3>::AdaptiveSampling(void);
-    template void KDTree<Point4>::AdaptiveSampling(void);
-    template void KDTree<Point5>::AdaptiveSampling(void);
-    template void KDTree<Point6>::AdaptiveSampling(void);
+    template void KDGrid<Point3>::AdaptiveSampling(void);
+    template void KDGrid<Point4>::AdaptiveSampling(void);
+    template void KDGrid<Point5>::AdaptiveSampling(void);
+    template void KDGrid<Point6>::AdaptiveSampling(void);
 
-    template void KDTree<Point3>::SamplingPass(void);
-    template void KDTree<Point4>::SamplingPass(void);
-    template void KDTree<Point5>::SamplingPass(void);
-    template void KDTree<Point6>::SamplingPass(void);
+    template void KDGrid<Point3>::SamplingPass(void);
+    template void KDGrid<Point4>::SamplingPass(void);
+    template void KDGrid<Point5>::SamplingPass(void);
+    template void KDGrid<Point6>::SamplingPass(void);
 
-    template void KDTree<Point3>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDTree<Point4>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDTree<Point5>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDTree<Point6>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point3>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point4>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point5>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point6>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
 
-    template void KDTree<Point3>::SamplingDensity(float4* pixels, int width, int height);
-    template void KDTree<Point4>::SamplingDensity(float4* pixels, int width, int height);
-    template void KDTree<Point5>::SamplingDensity(float4* pixels, int width, int height);
-    template void KDTree<Point6>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDGrid<Point3>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDGrid<Point4>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDGrid<Point5>::SamplingDensity(float4* pixels, int width, int height);
+    template void KDGrid<Point6>::SamplingDensity(float4* pixels, int width, int height);
 
-    template bool KDTree<Point3>::Validate(void);
-    template bool KDTree<Point4>::Validate(void);
-    template bool KDTree<Point5>::Validate(void);
-    template bool KDTree<Point6>::Validate(void);
+    template bool KDGrid<Point3>::Validate(void);
+    template bool KDGrid<Point4>::Validate(void);
+    template bool KDGrid<Point5>::Validate(void);
+    template bool KDGrid<Point6>::Validate(void);
 
     float bitsToFloat(int val) {
         return *(float*)&val;
@@ -128,7 +128,7 @@ namespace mdas {
         float scaleY,
         float* nodeErrors,
         Point* sampleCoordinates,
-        KDTree<Point>::Node* nodes,
+        KDGrid<Point>::Node* nodes,
         AABB<Point>* nodeBoxes,
         unsigned int* seeds
     ) {
@@ -164,7 +164,7 @@ namespace mdas {
             extent[1] *= scaleY;
 
             // Uniform sampling
-            typename KDTree<Point>::Node node;
+            typename KDGrid<Point>::Node node;
             unsigned int seed = tea<4>(nodeIndex, 0);
             for (int j = 0; j < samplesPerNode; ++j) {
 
@@ -228,7 +228,7 @@ namespace mdas {
 
                 // Node
                 float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
-                const typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
+                const typename KDGrid<Point>::Node node = *(typename KDGrid<Point>::Node*) & tmp;
 
                 // Volume
                 AABB<Point> box = nodeBoxes[nodeIndex];
@@ -295,7 +295,7 @@ namespace mdas {
         int candidatesNum,
         float errorThreshold,
         float* nodeErrors,
-        KDTree<Point>::Node* nodes,
+        KDGrid<Point>::Node* nodes,
         AABB<Point>* nodeBoxes,
         Point* sampleCoordinates,
         unsigned int* seeds
@@ -323,7 +323,7 @@ namespace mdas {
 
                 // Node
                 tmp = tex1Dfetch(t_nodes, nodeIndex);
-                typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
+                typename KDGrid<Point>::Node node = *(typename KDGrid<Point>::Node*) & tmp;
 
                 // Best candidate method
                 float maxDistance = -1.0;
@@ -438,39 +438,35 @@ namespace mdas {
                         nodeOffset = numberOfNodes + warpOffset + warpIndex;
                     }
 
-                    // Child indices
-                    node.left = nodeIndex;
-                    node.right = nodeOffset;
-
                     // Left child
-                    typename KDTree<Point>::Node left;
+                    typename KDGrid<Point>::Node left;
                     for (int i = 0; i < 4; ++i) {
                         if (i < md) left.indices[i] = sampleIndicesLoc[i];
                         else left.indices[i] = ~Point::DIM;
                     }
-                    nodes[node.left] = left;
+                    nodes[nodeIndex] = left;
 
                     // Left box
                     AABB<Point> childBox = box;
                     childBox.mx[splitDimension] = splitPosition;
-                    nodeBoxes[node.left] = childBox;
+                    nodeBoxes[nodeIndex] = childBox;
 
                     // Right child
-                    typename KDTree<Point>::Node right;
+                    typename KDGrid<Point>::Node right;
                     for (int i = 0; i < 4; ++i) {
                         if (i < sampleCount - md) right.indices[i] = sampleIndicesLoc[md + i];
                         else right.indices[i] = ~Point::DIM;
                     }
-                    nodes[node.right] = right;
+                    nodes[nodeOffset] = right;
 
                     // Right box
                     childBox = box;
                     childBox.mn[splitDimension] = splitPosition;
-                    nodeBoxes[node.right] = childBox;
+                    nodeBoxes[nodeOffset] = childBox;
 
                     // Reset errors
-                    nodeErrors[node.left] = -1.0f;
-                    nodeErrors[node.right] = -1.0f;
+                    nodeErrors[nodeIndex] = -1.0f;
+                    nodeErrors[nodeOffset] = -1.0f;
 
                 }
 
@@ -504,7 +500,7 @@ namespace mdas {
 
             // Node
             float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
-            const typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
+            const typename KDGrid<Point>::Node node = *(typename KDGrid<Point>::Node*) & tmp;
 
             // Average value
             float3 sampleValue = make_float3(0.0f);
@@ -598,7 +594,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    KDTree<Point>::KDTree(
+    KDGrid<Point>::KDGrid(
         int maxSamples, 
         int candidatesNum,
         int bitsPerDim,
@@ -631,7 +627,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::InitialSampling() {
+    void KDGrid<Point>::InitialSampling() {
 
         // Reset seeds
         cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
@@ -677,11 +673,11 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::ComputeErrors(void) {
+    void KDGrid<Point>::ComputeErrors(void) {
 
         // Setup texture references
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
+        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDGrid::Node) * numberOfNodes));
 
         // Reset atomic counter
         const float zero = 0.0f;
@@ -719,7 +715,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::AdaptiveSampling(void) {
+    void KDGrid<Point>::AdaptiveSampling(void) {
 
         // Reset atomic counter
         const int zero = 0;
@@ -776,17 +772,17 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::SamplingPass(void) {
+    void KDGrid<Point>::SamplingPass(void) {
         ComputeErrors();
         AdaptiveSampling();
     }
 
     template <typename Point>
-    void KDTree<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
+    void KDGrid<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
 
         // Setup texture references
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
+        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDGrid::Node) * numberOfNodes));
 
         // Grid and block size
         int minGridSize, blockSize;
@@ -820,7 +816,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::SamplingDensity(float4* pixels, int width, int height) {
+    void KDGrid<Point>::SamplingDensity(float4* pixels, int width, int height) {
         float samplingDensity = 0.05f;
         memset(pixels, 0, sizeof(float4) * width * height);
         for (int i = 0; i < GetNumberOfSamples(); ++i) {
@@ -837,7 +833,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    bool KDTree<Point>::Validate(void) {
+    bool KDGrid<Point>::Validate(void) {
         // Validation flag
         bool valid = true;
 #if ENABLE_VALIDATION
@@ -921,7 +917,7 @@ namespace mdas {
                 for (int k = 0; k < numberOfNodes; ++k) {
                     for (int j = 0; j < 4; ++j) {
                         int nodeIndex = k;
-                        KDTree::Node curNode = nodes[nodeIndex];
+                        KDGrid::Node curNode = nodes[nodeIndex];
                         if (curNode.indices[j] == i) {
                             AABB<Point> box = nodeBoxes[nodeIndex];
                             std::cout << "Sample is in node " << nodeIndex << std::endl;

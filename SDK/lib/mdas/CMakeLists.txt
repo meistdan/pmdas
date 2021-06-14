@@ -29,14 +29,14 @@
 # CUDA compilation doesn't pick up the mdas include path target property.
 #include_directories( include )
 
-cuda_wrap_srcs( mdas OBJ generated_files kdtree.cu "" OPTIONS "" )
+cuda_wrap_srcs( mdas OBJ generated_files kdgrid.cu "" OPTIONS "" )
 
 add_library( mdas STATIC
-  kdtree.h
+  kdgrid.h
   aabb.h
   buffer.h
   point.h
-  kdtree.cu
+  kdgrid.cu
   ${generated_files}
 )
 
@@ -45,7 +45,7 @@ set_target_properties(mdas PROPERTIES LINKER_LANGUAGE CUDA)
 target_include_directories( mdas PUBLIC include )
 
 # These CUDA files need to be compiled as OBJ, not as PTX
-set_source_files_properties( kdtree.cu PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ )
+set_source_files_properties( kdgrid.cu PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ )
 
 # This file is just for reference in the IDE, don't compile it.
 #set_source_files_properties( optixPagingImpl.cpp PROPERTIES HEADER_FILE_ONLY TRUE )

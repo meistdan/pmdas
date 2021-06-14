@@ -63,7 +63,7 @@
 #include <string>
 #include <random>
 
-#include <lib/mdas/kdtree.h>
+#include <lib/mdas/kdgrid.h>
 
 //#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
 
@@ -91,7 +91,7 @@ int32_t                 height = 1080;
 
 // MDAS
 typedef mdas::Point4 Point;
-mdas::KDTree<Point>* kdtree = nullptr;
+mdas::KDGrid<Point>* kdgrid = nullptr;
 
 // Denoiser
 sutil::Denoiser denoiser;
@@ -288,7 +288,7 @@ void initMdas(std::ofstream* log = nullptr)
     Environment::getInstance()->getIntValue("Mdas.extraImgBits", extraImgBits);
     Environment::getInstance()->getIntValue("Mdas.candidatesNum", candidatesNum);
 
-    kdtree = new mdas::KDTree<Point>(
+    kdgrid = new mdas::KDGrid<Point>(
         max_samples,
         candidatesNum,
         bitsPerDim,
@@ -298,12 +298,12 @@ void initMdas(std::ofstream* log = nullptr)
         scaleFactor * height,
         log
         );
-    kdtree->InitialSampling();
+    kdgrid->InitialSampling();
 
-    params.scale = make_float2(kdtree->GetScaleX(), kdtree->GetScaleY());
-    params.sample_coordinates = reinterpret_cast<float*>(kdtree->GetSampleCoordinates().Data());
-    params.sample_values = kdtree->GetSampleValues().Data();
-    params.sample_count = kdtree->GetNumberOfSamples();
+    params.scale = make_float2(kdgrid->GetScaleX(), kdgrid->GetScaleY());
+    params.sample_coordinates = reinterpret_cast<float*>(kdgrid->GetSampleCoordinates().Data());
+    params.sample_values = kdgrid->GetSampleValues().Data();
+    params.sample_count = kdgrid->GetNumberOfSamples();
     params.sample_offset = 0;
     params.sample_dim = Point::DIM;
 }
@@ -353,8 +353,8 @@ void updateState(
         params.subframe_index = 0;
         if (mdas_on)
         {
-            kdtree->InitialSampling();
-            params.sample_count = kdtree->GetNumberOfSamples();
+            kdgrid->InitialSampling();
+            params.sample_count = kdgrid->GetNumberOfSamples();
             params.sample_offset = 0;
         }
     }
@@ -419,10 +419,10 @@ void launchSubframe(
 
 void samplingPassMdas()
 {
-    kdtree->SamplingPass();
-    kdtree->Validate();
-    params.sample_count = kdtree->GetNewSamples();
-    params.sample_offset = kdtree->GetNumberOfSamples() - kdtree->GetNewSamples();
+    kdgrid->SamplingPass();
+    kdgrid->Validate();
+    params.sample_count = kdgrid->GetNewSamples();
+    params.sample_offset = kdgrid->GetNumberOfSamples() - kdgrid->GetNewSamples();
 }
 
 
@@ -430,8 +430,8 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
 {
     float4* result_buffer_data = output_buffer.map();
     uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
-    kdtree->Validate();
-    kdtree->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
+    kdgrid->Validate();
+    kdgrid->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();
     output_buffer_bytes.unmap();
 }
@@ -439,7 +439,7 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
 
 void samplingDensityMdas(sutil::ImageBuffer& density_buffer)
 {
-    kdtree->SamplingDensity(reinterpret_cast<float4*>(density_buffer.data), width, height);
+    kdgrid->SamplingDensity(reinterpret_cast<float4*>(density_buffer.data), width, height);
 }
 
 
@@ -495,7 +495,7 @@ void initCameraState(const sutil::Scene& scene)
 void cleanup()
 {
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
-    if (kdtree != nullptr) delete kdtree;
+    if (kdgrid != nullptr) delete kdgrid;
     denoiser.cleanup();
     Environment::deleteInstance();
 }
@@ -665,12 +665,12 @@ int main(int argc, char* argv[])
                     {
                         if (params.subframe_index == 0)
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
-                        if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples()
-                            + kdtree->GetNumberOfNodes() <= max_samples)
+                        if (params.subframe_index >= 1 && kdgrid->GetNumberOfSamples()
+                            + kdgrid->GetNumberOfNodes() <= max_samples)
                         {
                             samplingPassMdas();
-                            std::cout << "New nodes " << kdtree->GetNewNodes() << ", New samples " << kdtree->GetNewSamples() <<
-                                ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
+                            std::cout << "New nodes " << kdgrid->GetNewNodes() << ", New samples " << kdgrid->GetNewSamples() <<
+                                ", Samples " << kdgrid->GetNumberOfSamples() << ", Nodes " << kdgrid->GetNumberOfNodes() << std::endl;
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
                         }
                         integrateMdas(output_buffer, output_buffer_bytes);
@@ -724,7 +724,7 @@ int main(int argc, char* argv[])
                 int total_samples = static_cast<int>(samples_per_launch * width * height);
                 std::cout << "Total samples " << total_samples << std::endl;
                 std::cout << "Sampling..." << std::endl;
-                while (kdtree->GetNumberOfSamples() < std::min(total_samples, max_samples))
+                while (kdgrid->GetNumberOfSamples() < std::min(total_samples, max_samples))
                 {
                     samplingPassMdas();
                     start = std::chrono::steady_clock::now();
@@ -732,8 +732,8 @@ int main(int argc, char* argv[])
                     stop = std::chrono::steady_clock::now();
                     time = stop - start;
                     log << "TRACE TIME\n" << time.count() << std::endl;
-                    std::cout << "New nodes " << kdtree->GetNewNodes() << ", New samples " << kdtree->GetNewSamples() <<
-                        ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
+                    std::cout << "New nodes " << kdgrid->GetNewNodes() << ", New samples " << kdgrid->GetNewSamples() <<
+                        ", Samples " << kdgrid->GetNumberOfSamples() << ", Nodes " << kdgrid->GetNumberOfNodes() << std::endl;
                 }
                 std::cout << "Integrating..." << std::endl;
                 integrateMdas(output_buffer, output_buffer_bytes);
