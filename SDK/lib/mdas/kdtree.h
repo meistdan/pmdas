@@ -65,7 +65,7 @@ public:
     Buffer<float3>& GetSampleValues(void) { return sampleValues; }
 
     int GetCandidatesNum(void) { return candidatesNum; }
-    int GetMaxLeafSize(void) { return maxLeafSize; }
+    int GetMaxNodeSize(void) { return maxNodeSize; }
     int GetNewSamples(void) { return newSamples; }
     int GetNewNodes(void) { return newNodes; }
     int GetNumberOfSamples(void) { return numberOfSamples; }
@@ -81,7 +81,7 @@ private:
     bool logStats;
 
     int candidatesNum;
-    int maxLeafSize;
+    int maxNodeSize;
     int bitsPerDim;
     int extraImgBits;
     int newSamples;

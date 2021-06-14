@@ -11,10 +11,7 @@
 
 namespace mdas {
 
-#define ENABLE_VALIDATION 0
-
-#define STACK_SIZE              64          // Size of the traversal stack in local memory
-#define DYNAMIC_FETCH_THRESHOLD 20          // If fewer than this active, fetch new rays
+#define ENABLE_VALIDATION 1
 
 #define divCeil(a, b) (((a) + (b) - 1) / (b))
 #define roundUp(a, b) (divCeil(a, b) * (b))
@@ -206,7 +203,7 @@ namespace mdas {
 
     template <typename Point>
     __global__ void computeErrorsKernel(
-        int numberOfLeaves,
+        int numberOfNodes,
         float* nodeErrors,
         AABB<Point>* nodeBoxes,
         float3* sampleValues
@@ -221,7 +218,7 @@ namespace mdas {
         // Error
         float error = 0.0f;
 
-        if (nodeIndex < numberOfLeaves) {
+        if (nodeIndex < numberOfNodes) {
 
             // Error
             error = nodeErrors[nodeIndex];
@@ -294,7 +291,7 @@ namespace mdas {
     __global__ void adaptiveSamplingKernel(
         int numberOfNodes,
         int numberOfSamples,
-        int maxLeafSize,
+        int maxNodeSize,
         int candidatesNum,
         float errorThreshold,
         float* nodeErrors,
@@ -342,7 +339,7 @@ namespace mdas {
                         r.data[i] = rnd(seed);
                     Point candidate = box.mn + r * diag;
 
-                    // Test samples in the leaf
+                    // Test samples in the node
                     float minDistance = FLT_MAX;
                     for (int i = 0; i < 4; ++i) {
                         if (node.indices[i] >= 0) {
@@ -392,12 +389,12 @@ namespace mdas {
                 }
 
                 // Enough space for new sample => Just insert sample index
-                if (sampleCount < maxLeafSize) {
+                if (sampleCount < maxNodeSize) {
                     node.indices[sampleCount] = sampleIndex;
                     nodes[nodeIndex] = node;
                 }
 
-                // Leaf is full => Split
+                // Node is full => Split
                 else {
 
                     // New sample index
@@ -507,20 +504,20 @@ namespace mdas {
 
             // Node
             float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
-            const typename KDTree<Point>::Node leaf = *(typename KDTree<Point>::Node*) & tmp;
+            const typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
 
             // Average value
             float3 sampleValue = make_float3(0.0f);
             int sampleCount = 0;
             for (int i = 0; i < 4; ++i) {
-                if (leaf.indices[i] >= 0) {
-                    sampleValue += sampleValues[leaf.indices[i]];
+                if (node.indices[i] >= 0) {
+                    sampleValue += sampleValues[node.indices[i]];
                     sampleCount++;
                 }
             }
             sampleValue /= float(sampleCount);
 
-            // Leaf box
+            // Node box
             AABB<Point> box = nodeBoxes[nodeIndex];
 
             // Pixels covered by node's bounding box
@@ -547,7 +544,7 @@ namespace mdas {
 
                 for (int x = x0; x < x1; ++x) {
 
-                    // Intersect the pixel volume with the leaf
+                    // Intersect the pixel volume with the node
                     const float clox = fmax(pMinX, box.mn[0]);
                     const float chix = fmin(pMaxX, box.mx[0]);
                     const float cloy = fmax(pMinY, box.mn[1]);
@@ -611,7 +608,7 @@ namespace mdas {
         float scaleY, 
         std::ofstream* log
     ) :
-        maxLeafSize(4),
+        maxNodeSize(4),
         candidatesNum(candidatesNum),
         bitsPerDim(bitsPerDim),
         extraImgBits(extraImgBits),
@@ -631,10 +628,6 @@ namespace mdas {
         nodeBoxes.Resize(2 * maxSamples - 1);
         nodeErrors.Resize(2 * maxSamples - 1);
         if (log != nullptr) logStats = true;
-        int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
-        int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
-        std::cout << "Initial samples " << numberOfInitialSamples << std::endl;
-        std::cout << "Scale " << scaleX << " " << scaleY << std::endl;
     }
 
     template <typename Point>
@@ -647,6 +640,9 @@ namespace mdas {
         const int samplesPerNode = 4;
         numberOfNodes = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
         numberOfSamples = numberOfNodes * samplesPerNode;
+        std::cout << "Initial samples " << numberOfSamples << std::endl;
+        std::cout << "Nodes " << numberOfNodes << std::endl;
+        std::cout << "Scale " << scaleX << " " << scaleY << std::endl;
 
         // Grid and block size
         int minGridSize, blockSize;
@@ -747,7 +743,7 @@ namespace mdas {
         adaptiveSamplingKernel<Point><<<gridSize, blockSize>>>(
             numberOfNodes,
             numberOfSamples,
-            maxLeafSize,
+            maxNodeSize,
             candidatesNum,
             errorThreshold,
             nodeErrors.Data(),
@@ -763,7 +759,7 @@ namespace mdas {
 
         // Number of nodes
         CUDA_CHECK(cudaMemcpyFromSymbol(&newNodes, g_warpCounter1, sizeof(int), 0));
-        numberOfNodes += 2 * newNodes;
+        numberOfNodes += newNodes;
 
         // Elapsed time and cleanup
         if (logStats) {
@@ -854,144 +850,103 @@ namespace mdas {
         float3 totalValue = make_float3(0.0f);
         int totalSampleCount = 0;
 
-        // Stack
-        std::stack<int> stack;
-        stack.push(0);
-
         // Sample index histogram
         std::vector<int> sampleHist(numberOfSamples);
         memset(sampleHist.data(), 0, sizeof(int) * numberOfSamples);
 
-        // Find leaves and validate them
-        while (!stack.empty()) {
-
-            // Pop node index
-            int nodeIndex = stack.top();
-            stack.pop();
+        // Process nodes and validate them
+        for (int k = 0; k < numberOfNodes; ++k) {
 
             // Box
+            int nodeIndex = k;
             AABB<Point> box = nodeBoxes[nodeIndex];
 
-            // Leaf
-            if (nodes[nodeIndex].Leaf()) {
-
-                float3 avgValue = make_float3(0.0f);
-                int sampleCount = 0;
-                for (int i = 0; i < 4; ++i) {
-                    if (nodes[nodeIndex].indices[i] >= 0) {
-                        int sampleIndex = nodes[nodeIndex].indices[i];
-                        if (!box.Contains(sampleCoordinates[sampleIndex])) {
-                            valid = false;
-                            std::cout << "Sample is outside the leaf!" << std::endl;
-                            std::cout << "Box min " << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
-                            std::cout << "Sample  " << sampleCoordinates[sampleIndex][0] << " " << sampleCoordinates[sampleIndex][1] << " "
-                                << sampleCoordinates[sampleIndex][2] << " " << sampleCoordinates[sampleIndex][3] << std::endl;
-                            std::cout << "Box max " << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
-                        }
-                        avgValue += sampleValues[sampleIndex];
-                        ++sampleHist[sampleIndex];
-                        ++sampleCount;
+            float3 avgValue = make_float3(0.0f);
+            int sampleCount = 0;
+            for (int i = 0; i < 4; ++i) {
+                int sampleIndex = nodes[nodeIndex].indices[i];
+                if (sampleIndex >= 0) {
+                    if (!box.Contains(sampleCoordinates[sampleIndex])) {
+                        std::cout << "Node index " << nodeIndex << std::endl;
+                        valid = false;
+                        std::cout << "Sample is outside the node!" << std::endl;
+                        std::cout << "Box min ";
+                        for (int l = 0; l < Point::DIM; ++l)
+                            std::cout << box.mn[l] << " ";
+                        std::cout << std::endl;
+                        std::cout << "Sample ";
+                        for (int l = 0; l < Point::DIM; ++l)
+                            std::cout << sampleCoordinates[sampleIndex][l] << " ";
+                        std::cout << std::endl;
+                        std::cout << "Box max ";
+                        for (int l = 0; l < Point::DIM; ++l)
+                            std::cout << box.mx[l] << " ";
+                        std::cout << std::endl;
                     }
+                    avgValue += sampleValues[sampleIndex];
+                    ++sampleHist[sampleIndex];
+                    ++sampleCount;
                 }
-                avgValue /= float(sampleCount);
-
-                // Add volume and sample count
-                totalVolume += box.Volume();
-                totalSampleCount += sampleCount;
-                totalValue += avgValue * box.Volume();
-
             }
+            avgValue /= float(sampleCount);
 
-            // Interior
-            else {
-                int rightIndex = nodes[nodeIndex].right < 0 ? ~nodes[nodeIndex].right : nodes[nodeIndex].right;
-                int leftIndex = nodes[nodeIndex].left < 0 ? ~nodes[nodeIndex].left : nodes[nodeIndex].left;
-                stack.push(rightIndex);
-                stack.push(leftIndex);
-            }
+            // Add volume and sample count
+            totalVolume += box.Volume();
+            totalSampleCount += sampleCount;
+            totalValue += avgValue * box.Volume();
 
         }
 
         float rootVolume = scaleX * scaleY;
         if (abs(totalVolume - rootVolume) > 1.0e-2 * rootVolume) {
-            std::cout << "Total volume bounded by leaves is not equal to the volume of bounded by the root " <<
+            std::cout << "Total volume bounded by nodes is not equal to the volume of bounded by the whole extent " <<
                 totalVolume << " != " << rootVolume << std::endl;
             valid = false;
         }
+
         if (totalSampleCount != numberOfSamples) {
-            std::cout << "Number of samples is different than number of indices in leaves " <<
+            std::cout << "Number of samples is different than number of indices in nodes " <<
                 numberOfSamples << " != " << totalSampleCount << std::endl;
             valid = false;
         }
+
         for (int i = 0; i < numberOfSamples; ++i) {
-            if (sampleHist[i] != 1) {
+            if (sampleHist[i] > 1) {
                 valid = false;
-                std::cout << "Sample not referenced or referenced more than once " << i << " " << sampleHist[i] << ": ";
-                std::cout << sampleCoordinates[i][0] << " " << sampleCoordinates[i][1]
-                    << " " << sampleCoordinates[i][2] << " " << sampleCoordinates[i][3] << std::endl;
-                for (int k = 0; k < GetNumberOfLeaves(); ++k) {
+                std::cout << "Sample is referenced more than once " << i << " " << sampleHist[i] << ": ";
+                for (int l = 0; l < Point::DIM; ++l)
+                    std::cout << sampleCoordinates[i][l] << " ";
+                std::cout << std::endl;
+                if (sampleHist[i] == 0) {}
+                for (int k = 0; k < numberOfNodes; ++k) {
                     for (int j = 0; j < 4; ++j) {
-                        int nodeIndex = leafIndices[k];
+                        int nodeIndex = k;
                         KDTree::Node curNode = nodes[nodeIndex];
                         if (curNode.indices[j] == i) {
                             AABB<Point> box = nodeBoxes[nodeIndex];
-                            std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
-                            std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
-                            std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
+                            std::cout << "Sample is in node " << nodeIndex << std::endl;
+                            std::cout << "\t";
+                            for (int l = 0; l < Point::DIM; ++l)
+                                std::cout << box.mn[l] << " ";
+                            std::cout << std::endl;
+                            std::cout << "\t";
+                            for (int l = 0; l < Point::DIM; ++l)
+                                std::cout << box.mx[l] << " ";
+                            std::cout << std::endl;
                         }
                     }
                 }
             }
-        }
-
-        // Test traversal (splitting planes)
-        for (int i = 0; i < numberOfSamples; ++i) {
-
-            // Find leaf
-            stack.push(0);
-            Point sample = sampleCoordinates[i];
-            bool contains = false;
-            while (!stack.empty()) {
-                int curNodeIndex = stack.top();
-                KDTree::Node curNode = nodes[curNodeIndex];
-                stack.pop();
-                if (curNode.Leaf()) {
-                    for (int j = 0; j < 4; ++j) {
-                        if (curNode.indices[j] == i)
-                            contains = true;
-                    }
-                }
-                else {
-                    if (sample[~curNode.dimension] <= curNode.position)
-                        stack.push(curNode.left < 0 ? ~curNode.left : curNode.left);
-                    if (sample[~curNode.dimension] >= curNode.position)
-                        stack.push(curNode.right < 0 ? ~curNode.right : curNode.right);
-                }
-            }
-
-            if (!contains) {
+            else if (sampleHist[i] == 0) {
                 valid = false;
-                std::cout << "Sample is not in any leaf " << i << ": ";
-                std::cout << sampleCoordinates[i][0] << " " << sampleCoordinates[i][1] <<
-                    " " << sampleCoordinates[i][2] << " " << sampleCoordinates[i][3] << std::endl;
-                std::cout << "Histogram " << sampleHist[i] << std::endl;
-                for (int k = 0; k < GetNumberOfLeaves(); ++k) {
-                    for (int j = 0; j < 4; ++j) {
-                        int nodeIndex = leafIndices[k];
-                        KDTree::Node curNode = nodes[nodeIndex];
-                        if (curNode.indices[j] == i) {
-                            contains = true;
-                            AABB<Point> box = nodeBoxes[nodeIndex];
-                            std::cout << "Sample is in leaf node " << nodeIndex << std::endl;
-                            std::cout << "\t" << box.mn[0] << " " << box.mn[1] << " " << box.mn[2] << " " << box.mn[3] << std::endl;
-                            std::cout << "\t" << box.mx[0] << " " << box.mx[1] << " " << box.mx[2] << " " << box.mx[3] << std::endl;
-                        }
-                    }
-                }
+                std::cout << "Sample is not referenced in any node " << i << " " << sampleHist[i] << ": ";
+                for (int l = 0; l < Point::DIM; ++l) 
+                    std::cout << sampleCoordinates[i][l] <<  " ";
+                std::cout << std::endl;
             }
         }
 
-        if (!valid) exit(1);
+        if (!valid) exit(EXIT_FAILURE);
 #endif
         return valid;
     }
