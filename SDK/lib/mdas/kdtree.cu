@@ -405,6 +405,7 @@ namespace mdas {
                 // Enough space for new sample => Just insert sample index
                 if (sampleCount < maxLeafSize) {
                     node.indices[sampleCount] = sampleIndex;
+                    nodes[nodeIndex] = node;
                 }
 
                 // Leaf is full => Split
@@ -455,7 +456,7 @@ namespace mdas {
 
                     // Child indices
                     node.left = nodeOffset;
-                    node.right = nodeOffset + 1;
+                    node.right = nodeIndex;
 
                     // Left child
                     typename KDTree<Point>::Node left;
@@ -492,9 +493,6 @@ namespace mdas {
                     nodeErrors[node.right] = -1.0f;
 
                 }
-
-                // Write node
-                nodes[nodeIndex] = node;
 
             }
 
