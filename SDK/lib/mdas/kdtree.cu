@@ -130,7 +130,6 @@ namespace mdas {
         float scaleX,
         float scaleY,
         float* nodeErrors,
-        int* leafIndices,
         Point* sampleCoordinates,
         KDTree<Point>::Node* nodes,
         AABB<Point>* nodeBoxes,
@@ -190,7 +189,6 @@ namespace mdas {
             seeds[nodeIndex] = seed;
 
             // Node index and error
-            leafIndices[nodeIndex] = nodeIndex;
             nodeErrors[nodeIndex] = -1.0f;
 
             // Write node
@@ -209,14 +207,13 @@ namespace mdas {
     template <typename Point>
     __global__ void computeErrorsKernel(
         int numberOfLeaves,
-        int* leafIndices,
         float* nodeErrors,
         AABB<Point>* nodeBoxes,
         float3* sampleValues
     ) {
 
-        // Leaf index
-        const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+        // Node index
+        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
         // Warp thread index
         const int warpThreadIndex = threadIdx.x & 31;
@@ -224,10 +221,7 @@ namespace mdas {
         // Error
         float error = 0.0f;
 
-        if (leafIndex < numberOfLeaves) {
-
-            // Node index
-            int nodeIndex = leafIndices[leafIndex];
+        if (nodeIndex < numberOfLeaves) {
 
             // Error
             error = nodeErrors[nodeIndex];
@@ -298,13 +292,11 @@ namespace mdas {
 
     template <typename Point>
     __global__ void adaptiveSamplingKernel(
-        int numberOfLeaves,
         int numberOfNodes,
         int numberOfSamples,
         int maxLeafSize,
         int candidatesNum,
         float errorThreshold,
-        int* leafIndices,
         float* nodeErrors,
         KDTree<Point>::Node* nodes,
         AABB<Point>* nodeBoxes,
@@ -312,8 +304,8 @@ namespace mdas {
         unsigned int* seeds
     ) {
 
-        // Leaf index
-        const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+        // Node index
+        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
         // Warp thread index
         const int warpThreadIndex = threadIdx.x & 31;
@@ -321,10 +313,7 @@ namespace mdas {
         // Sample indices local
         int sampleIndicesLoc[5];
 
-        if (leafIndex < numberOfLeaves) {
-
-            // Node index
-            int nodeIndex = leafIndices[leafIndex];
+        if (nodeIndex < numberOfNodes) {
 
             // Error
             float error = nodeErrors[nodeIndex];
@@ -343,8 +332,8 @@ namespace mdas {
                 float maxDistance = -1.0;
                 Point maxCandidate;
                 Point diag = box.Diagonal();
-                unsigned int seed = seeds[leafIndex];
-                if (seed == 0) seed = tea<4>(leafIndex, 0);
+                unsigned int seed = seeds[nodeIndex];
+                if (seed == 0) seed = tea<4>(nodeIndex, 0);
                 for (int j = 0; j < candidatesNum; ++j) {
 
                     // Generate candidate
@@ -371,7 +360,7 @@ namespace mdas {
                     }
 
                 }
-                seeds[leafIndex] = seed;
+                seeds[nodeIndex] = seed;
 
                 // Sample index
                 int sampleIndex;
@@ -437,7 +426,6 @@ namespace mdas {
 
                     // Node offset
                     int nodeOffset;
-                    int leafOffset;
                     {
                         // Prefix scan
                         const unsigned int activeMask = __activemask();
@@ -451,7 +439,6 @@ namespace mdas {
                             warpOffset = atomicAdd(&g_warpCounter1, warpCount);
                         warpOffset = __shfl_sync(activeMask, warpOffset, warpLeader);
                         nodeOffset = numberOfNodes + warpOffset + warpIndex;
-                        leafOffset = numberOfLeaves + warpOffset + warpIndex;
                     }
 
                     // Child indices
@@ -484,10 +471,6 @@ namespace mdas {
                     childBox.mn[splitDimension] = splitPosition;
                     nodeBoxes[node.right] = childBox;
 
-                    // New leaf indices and reset error
-                    leafIndices[leafIndex] = node.left;
-                    leafIndices[leafOffset] = node.right;
-
                     // Reset errors
                     nodeErrors[node.left] = -1.0f;
                     nodeErrors[node.right] = -1.0f;
@@ -502,21 +485,20 @@ namespace mdas {
 
     template <typename Point>
     __global__ void integrateKernel(
-        int numberOfLeaves,
+        int numberOfNodes,
         int width,
         int height,
         float scaleX,
         float scaleY,
-        int* leafIndices,
         float3* sampleValues,
         float4* pixels,
         AABB<Point>* nodeBoxes
     ) {
 
-        // Leaf index
-        const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+        // Node index
+        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-        if (leafIndex < numberOfLeaves) {
+        if (nodeIndex < numberOfNodes) {
 
             // Pixel step
             float2 pixelStep;
@@ -524,7 +506,6 @@ namespace mdas {
             pixelStep.y = scaleY / height;
 
             // Node
-            int nodeIndex = leafIndices[leafIndex];
             float4 tmp = tex1Dfetch(t_nodes, nodeIndex);
             const typename KDTree<Point>::Node leaf = *(typename KDTree<Point>::Node*) & tmp;
 
@@ -649,7 +630,6 @@ namespace mdas {
         nodes.Resize(2 * maxSamples - 1);
         nodeBoxes.Resize(2 * maxSamples - 1);
         nodeErrors.Resize(2 * maxSamples - 1);
-        leafIndices.Resize(maxSamples);
         if (log != nullptr) logStats = true;
         int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
         int numberOfInitialSamples = numberOfLeaves * maxLeafSize;
@@ -684,7 +664,7 @@ namespace mdas {
 
         // Launch
         uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfNodes, samplesPerNode, bitsPerDim, extraImgBits, scaleX, scaleY,
-            nodeErrors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
+            nodeErrors.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
 
         // Elapsed time and cleanup
         if (logStats) {
@@ -727,7 +707,7 @@ namespace mdas {
 
         // Launch
         computeErrorsKernel<Point><<<gridSize, blockSize>>>(numberOfNodes,
-            leafIndices.Data(), nodeErrors.Data(), nodeBoxes.Data(), sampleValues.Data());
+            nodeErrors.Data(), nodeBoxes.Data(), sampleValues.Data());
 
         // Elapsed time and cleanup
         if (logStats) {
@@ -766,12 +746,10 @@ namespace mdas {
         // Launch
         adaptiveSamplingKernel<Point><<<gridSize, blockSize>>>(
             numberOfNodes,
-            numberOfNodes,
             numberOfSamples,
             maxLeafSize,
             candidatesNum,
             errorThreshold,
-            leafIndices.Data(),
             nodeErrors.Data(),
             nodes.Data(),
             nodeBoxes.Data(),
@@ -829,7 +807,7 @@ namespace mdas {
         }
 
         integrateKernel<Point><<<gridSize, blockSize>>>(numberOfNodes, width, height, scaleX, scaleY, 
-            leafIndices.Data(), sampleValues.Data(), pixels, nodeBoxes.Data());
+            sampleValues.Data(), pixels, nodeBoxes.Data());
 
         // Elapsed time and cleanup
         if (logStats) {

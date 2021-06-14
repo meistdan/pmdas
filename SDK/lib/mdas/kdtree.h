@@ -101,7 +101,6 @@ private:
     Buffer<AABB<Point>> nodeBoxes;
     Buffer<float> nodeErrors;
 
-    Buffer<int> leafIndices;
     Buffer<unsigned int> seeds;
 
 };
