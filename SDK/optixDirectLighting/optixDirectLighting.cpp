@@ -499,7 +499,8 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
     float4* result_buffer_data = output_buffer.map();
     uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
     kdgrid->Validate();
-    kdgrid->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
+    kdgrid->Integrate(result_buffer_data, width, height);
+    kdgrid->ConvertToBytes(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();
     output_buffer_bytes.unmap();
 }
