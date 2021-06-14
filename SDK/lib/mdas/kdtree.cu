@@ -450,13 +450,13 @@ namespace mdas {
                         if (warpThreadIndex == warpLeader)
                             warpOffset = atomicAdd(&g_warpCounter1, warpCount);
                         warpOffset = __shfl_sync(activeMask, warpOffset, warpLeader);
-                        nodeOffset = numberOfNodes + 2 * (warpOffset + warpIndex);
+                        nodeOffset = numberOfNodes + warpOffset + warpIndex;
                         leafOffset = numberOfLeaves + warpOffset + warpIndex;
                     }
 
                     // Child indices
-                    node.left = nodeOffset;
-                    node.right = nodeIndex;
+                    node.left = nodeIndex;
+                    node.right = nodeOffset;
 
                     // Left child
                     typename KDTree<Point>::Node left;
@@ -502,192 +502,6 @@ namespace mdas {
 
     template <typename Point>
     __global__ void integrateKernel(
-        int width,
-        int height,
-        float scaleX,
-        float scaleY,
-        float3* sampleValues,
-        float4* pixels,
-        uchar4* pixelsBytes,
-        AABB<Point>* nodeBoxes
-    ) {
-
-        // Traversal stack in CUDA thread-local memory
-        int traversalStack[STACK_SIZE];
-        traversalStack[0] = EntrypointSentinel; // Bottom-most entry
-
-        // Live state during traversal, stored in registers
-        char* stackPtr;                       // Current position in traversal stack
-        int     leafAddr;                       // First postponed leaf, non-negative if none
-        int     nodeAddr = EntrypointSentinel;  // Non-negative: current internal node, negative: second postponed leaf
-        int     pixIdx;
-        int     pixX, pixY;
-        float   pMinX, pMaxX, pMinY, pMaxY;
-        float   pixArea = (scaleX * scaleY) / (width * height);
-        float3  value;
-
-        // Initialize persistent threads.
-        __shared__ volatile int nextPixArray[MaxBlockHeight]; // Current ray index in global buffer
-
-        // Persistent threads: fetch and process rays in a loop
-        do {
-            const int tidx = threadIdx.x;
-            volatile int& pixBase = nextPixArray[threadIdx.y];
-
-            // Fetch new rays from the global pool using lane 0
-            const bool          terminated = nodeAddr == EntrypointSentinel;
-            //const unsigned int  maskTerminated = __ballot_sync(0xffffffff, terminated);
-            const unsigned int  maskTerminated = __ballot_sync(__activemask(), terminated);
-            const int           numTerminated = __popc(maskTerminated);
-            const int           idxTerminated = __popc(maskTerminated & ((1u << tidx) - 1));
-
-            if (terminated) {
-
-                if (idxTerminated == 0)
-                    pixBase = atomicAdd(&g_warpCounter0, numTerminated);
-
-                pixIdx = pixBase + idxTerminated;
-                if (pixIdx >= width * height)
-                    break;
-
-                // Value
-                value = make_float3(0.0f);
-
-                // Compute pixel
-                pixX = pixIdx % width;
-                pixY = pixIdx / width;
-                pMinX = pixX / float(width) * scaleX;
-                pMaxX = (pixX + 1) / float(width) * scaleX;
-                pMinY = pixY / float(height) * scaleY;
-                pMaxY = (pixY + 1) / float(height) * scaleY;
-
-                // Setup traversal
-                stackPtr = (char*)&traversalStack[0];
-                leafAddr = 0;   // No postponed leaf
-                nodeAddr = 0;   // Start from the root
-            }
-
-            // Traversal loop
-            while (nodeAddr != EntrypointSentinel) {
-                // Traverse internal nodes until all SIMD lanes have found a leaf
-                while (unsigned int(nodeAddr) < unsigned int(EntrypointSentinel)) {
-
-                    // Fetch node
-                    float4 tmp = tex1Dfetch(t_nodes, nodeAddr); // child_index0, child_index1
-                    const typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
-
-                    // Intersect the pixel volume with the child nodes
-                    bool traverseChild0x = ~node.dimension == 0 ? pMinX < node.position : true;
-                    bool traverseChild0y = ~node.dimension == 1 ? pMinY < node.position : true;
-                    bool traverseChild1x = ~node.dimension == 0 ? pMaxX > node.position : true;
-                    bool traverseChild1y = ~node.dimension == 1 ? pMaxY > node.position : true;
-
-                    bool traverseChild0 = traverseChild0x && traverseChild0y;
-                    bool traverseChild1 = traverseChild1x && traverseChild1y;
-
-                    // Neither child was intersected => pop stack
-                    if (!traverseChild0 && !traverseChild1) {
-                        nodeAddr = *(int*)stackPtr;
-                        stackPtr -= 4;
-                    }
-
-                    // Otherwise => fetch child pointers
-                    else {
-                        nodeAddr = (traverseChild0) ? node.left : node.right;
-
-                        // Both children were intersected => push the farther one
-                        if (traverseChild0 && traverseChild1) {
-                            stackPtr += 4;
-                            *(int*)stackPtr = node.right;
-                        }
-                    }
-
-                    // First leaf => postpone and continue traversal
-                    if (nodeAddr < 0 && leafAddr >= 0) {
-                        leafAddr = nodeAddr;
-                        nodeAddr = *(int*)stackPtr;
-                        stackPtr -= 4;
-                    }
-
-                    // All SIMD lanes have found a leaf? => process them
-
-                    // NOTE: inline PTX implementation of "if(!__any(leafAddr >= 0)) break;"
-                    // tried everything with CUDA 4.2 but always got several redundant instructions
-
-                    //unsigned int mask;
-                    //asm("{\n"
-                    //    "   .reg .pred p;               \n"
-                    //    "setp.ge.s32        p, %1, 0;   \n"
-                    //    "vote.ballot.b32    %0,p;       \n"
-                    //    "}"
-                    //    : "=r"(mask)
-                    //    : "r"(leafAddr));
-                    //if (!mask)
-                    //    break;
-
-                    if (!__any_sync(__activemask(), leafAddr >= 0))
-                        break;
-
-                }
-
-                // Process postponed leaf nodes
-                while (leafAddr < 0) {
-
-                    // Node
-                    float4 tmp = tex1Dfetch(t_nodes, ~leafAddr);
-                    const typename KDTree<Point>::Node leaf = *(typename KDTree<Point>::Node*) & tmp;
-
-                    // Average value
-                    float3 sampleValue = make_float3(0.0f);
-                    int sampleCount = 0;
-                    for (int i = 0; i < 4; ++i) {
-                        if (leaf.indices[i] >= 0) {
-                            sampleValue += sampleValues[leaf.indices[i]];
-                            sampleCount++;
-                        }
-                    }
-                    sampleValue /= float(sampleCount);
-
-                    // Leaf box
-                    AABB<Point> box = nodeBoxes[~leafAddr];
-
-                    // Intersect the pixel volume with the leaf
-                    const float clox = fmax(pMinX, box.mn[0]);
-                    const float chix = fmin(pMaxX, box.mx[0]);
-                    const float cloy = fmax(pMinY, box.mn[1]);
-                    const float chiy = fmin(pMaxY, box.mx[1]);
-
-                    // Volume
-                    float volume = (chix - clox) * (chiy - cloy) * box.Volume() 
-                        / ((box.mx[0] - box.mn[0]) * (box.mx[1] - box.mn[1]));
-
-                    // Add contribution
-                    value += sampleValue * volume / pixArea;
-
-                    // Another leaf was postponed => process it as well.
-                    leafAddr = nodeAddr;
-                    if (nodeAddr < 0) {
-                        nodeAddr = *(int*)stackPtr;
-                        stackPtr -= 4;
-                    }
-                } // leaf
-
-                // DYNAMIC FETCH
-                if (__popc(__activemask()) < DYNAMIC_FETCH_THRESHOLD)
-                    break;
-
-            } // traversal
-
-            // Store the result
-            pixels[pixIdx] = make_float4(value, 1.0f);
-            //pixelsBytes[pixIdx] = make_color(value);
-
-        } while (true);
-
-    }
-
-    template <typename Point>
-    __global__ void integrateSplattingKernel(
         int numberOfLeaves,
         int width,
         int height,
@@ -850,16 +664,15 @@ namespace mdas {
         cudaMemset(seeds.Data(), 0, sizeof(unsigned int) * maxSamples);
 
         // Number of samples
-        const int samplesPerLeaf = 4;
-        int numberOfLeaves = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
-        numberOfNodes = 2 * numberOfLeaves - 1;
-        numberOfSamples = numberOfLeaves * samplesPerLeaf;
+        const int samplesPerNode = 4;
+        numberOfNodes = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
+        numberOfSamples = numberOfNodes * samplesPerNode;
 
         // Grid and block size
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
             uniformSamplingKernel<Point>, 0, 0);
-        int gridSize = divCeil(numberOfLeaves, blockSize);
+        int gridSize = divCeil(numberOfNodes, blockSize);
 
         // Timer
         cudaEvent_t start, stop;
@@ -870,7 +683,7 @@ namespace mdas {
         }
 
         // Launch
-        uniformSamplingKernel << <gridSize, blockSize >> > (numberOfLeaves, samplesPerLeaf, bitsPerDim, extraImgBits, scaleX, scaleY,
+        uniformSamplingKernel<<<gridSize, blockSize>>>(numberOfNodes, samplesPerNode, bitsPerDim, extraImgBits, scaleX, scaleY,
             nodeErrors.Data(), leafIndices.Data(), sampleCoordinates.Data(), nodes.Data(), nodeBoxes.Data(), seeds.Data());
 
         // Elapsed time and cleanup
@@ -902,7 +715,7 @@ namespace mdas {
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
             computeErrorsKernel<Point>, 0, 0);
-        int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
+        int gridSize = divCeil(numberOfNodes, blockSize);
 
         // Timer
         cudaEvent_t start, stop;
@@ -913,7 +726,7 @@ namespace mdas {
         }
 
         // Launch
-        computeErrorsKernel<Point><<<gridSize, blockSize>>>(GetNumberOfLeaves(),
+        computeErrorsKernel<Point><<<gridSize, blockSize>>>(numberOfNodes,
             leafIndices.Data(), nodeErrors.Data(), nodeBoxes.Data(), sampleValues.Data());
 
         // Elapsed time and cleanup
@@ -940,7 +753,7 @@ namespace mdas {
         // Grid and block size
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, adaptiveSamplingKernel<Point>, 0, 0);
-        int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
+        int gridSize = divCeil(numberOfNodes, blockSize);
 
         // Timer
         cudaEvent_t start, stop;
@@ -952,7 +765,7 @@ namespace mdas {
 
         // Launch
         adaptiveSamplingKernel<Point><<<gridSize, blockSize>>>(
-            GetNumberOfLeaves(),
+            numberOfNodes,
             numberOfNodes,
             numberOfSamples,
             maxLeafSize,
@@ -971,9 +784,8 @@ namespace mdas {
         numberOfSamples += newSamples;
 
         // Number of nodes
-        int newInteriors;
-        CUDA_CHECK(cudaMemcpyFromSymbol(&newInteriors, g_warpCounter1, sizeof(int), 0));
-        numberOfNodes += 2 * newInteriors;
+        CUDA_CHECK(cudaMemcpyFromSymbol(&newNodes, g_warpCounter1, sizeof(int), 0));
+        numberOfNodes += 2 * newNodes;
 
         // Elapsed time and cleanup
         if (logStats) {
@@ -1005,8 +817,8 @@ namespace mdas {
         // Grid and block size
         int minGridSize, blockSize;
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-            integrateSplattingKernel<Point>, 0, 0);
-        int gridSize = divCeil(GetNumberOfLeaves(), blockSize);
+            integrateKernel<Point>, 0, 0);
+        int gridSize = divCeil(numberOfNodes, blockSize);
 
         // Timer
         cudaEvent_t start, stop;
@@ -1016,7 +828,7 @@ namespace mdas {
             cudaEventRecord(start, 0);
         }
 
-        integrateSplattingKernel<Point><<<gridSize, blockSize>>>(GetNumberOfLeaves(), width, height, scaleX, scaleY, 
+        integrateKernel<Point><<<gridSize, blockSize>>>(numberOfNodes, width, height, scaleX, scaleY, 
             leafIndices.Data(), sampleValues.Data(), pixels, nodeBoxes.Data());
 
         // Elapsed time and cleanup

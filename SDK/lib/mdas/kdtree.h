@@ -67,9 +67,9 @@ public:
     int GetCandidatesNum(void) { return candidatesNum; }
     int GetMaxLeafSize(void) { return maxLeafSize; }
     int GetNewSamples(void) { return newSamples; }
+    int GetNewNodes(void) { return newNodes; }
     int GetNumberOfSamples(void) { return numberOfSamples; }
     int GetNumberOfNodes(void) { return numberOfNodes; }
-    int GetNumberOfLeaves(void) { return (numberOfNodes >> 1) + 1; }
     int GetMaxSamples(void) { return maxSamples;  }
 
     float GetScaleX(void) { return scaleX; }
@@ -85,6 +85,7 @@ private:
     int bitsPerDim;
     int extraImgBits;
     int newSamples;
+    int newNodes;
     int numberOfSamples;
     int numberOfNodes;
     int maxSamples;

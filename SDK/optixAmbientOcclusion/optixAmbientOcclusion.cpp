@@ -666,10 +666,10 @@ int main(int argc, char* argv[])
                         if (params.subframe_index == 0)
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
                         if (params.subframe_index >= 1 && kdtree->GetNumberOfSamples()
-                            + kdtree->GetNumberOfLeaves() <= max_samples)
+                            + kdtree->GetNumberOfNodes() <= max_samples)
                         {
                             samplingPassMdas();
-                            std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
+                            std::cout << "New nodes " << kdtree->GetNewNodes() << ", New samples " << kdtree->GetNewSamples() <<
                                 ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
                         }
@@ -732,7 +732,7 @@ int main(int argc, char* argv[])
                     stop = std::chrono::steady_clock::now();
                     time = stop - start;
                     log << "TRACE TIME\n" << time.count() << std::endl;
-                    std::cout << "Leaves " << kdtree->GetNumberOfLeaves() << ", New samples " << kdtree->GetNewSamples() <<
+                    std::cout << "New nodes " << kdtree->GetNewNodes() << ", New samples " << kdtree->GetNewSamples() <<
                         ", Samples " << kdtree->GetNumberOfSamples() << ", Nodes " << kdtree->GetNumberOfNodes() << std::endl;
                 }
                 std::cout << "Integrating..." << std::endl;
