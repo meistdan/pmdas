@@ -81,11 +81,6 @@ namespace mdas {
     template void KDTree<Point5>::Construct(void);
     template void KDTree<Point6>::Construct(void);
 
-    template void KDTree<Point3>::UpdateIndices(void);
-    template void KDTree<Point4>::UpdateIndices(void);
-    template void KDTree<Point5>::UpdateIndices(void);
-    template void KDTree<Point6>::UpdateIndices(void);
-
     template void KDTree<Point3>::ComputeErrors(void);
     template void KDTree<Point4>::ComputeErrors(void);
     template void KDTree<Point5>::ComputeErrors(void);
@@ -282,35 +277,6 @@ namespace mdas {
     }
 
     template <typename Point>
-    __global__ void updateIndicesKernel(
-        int numberOfNodes,
-        KDTree<Point>::Node* nodes
-    ) {
-
-        // Sample index
-        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-        if (nodeIndex < numberOfNodes) {
-
-            // Node
-            typename KDTree<Point>::Node node = nodes[nodeIndex];
-
-            // Only interiors
-            if (!node.Leaf()) {
-                node.left = node.left < 0 ? ~node.left : node.left;
-                node.right = node.right < 0 ? ~node.right : node.right;
-                if (nodes[node.left].Leaf()) node.left = ~node.left;
-                if (nodes[node.right].Leaf()) node.right = ~node.right;
-            }
-
-            // Write node
-            nodes[nodeIndex] = node;
-
-        }
-
-    }
-
-    template <typename Point>
     __global__ void computeErrorsKernel(
         int numberOfLeaves,
         int* leafIndices,
@@ -422,9 +388,8 @@ namespace mdas {
         // Warp thread index
         const int warpThreadIndex = threadIdx.x & 31;
 
-        // Stack
-        int stack[STACK_SIZE];
-        stack[0] = EntrypointSentinel;
+        // Sample indices local
+        int sampleIndicesLoc[5];
 
         if (leafIndex < numberOfLeaves) {
 
@@ -439,6 +404,10 @@ namespace mdas {
             AABB<Point> box = nodeBoxes[nodeIndex];
 
 #if 0
+            // Stack
+            int stack[STACK_SIZE];
+            stack[0] = EntrypointSentinel;
+
             // Radius and center
             const float R = 0.55f;
             float radius = R * Point::Distance(box.mx, box.mn);
@@ -558,7 +527,7 @@ namespace mdas {
                 int sampleCount = 0;
                 for (int i = 0; i < 4; ++i) {
                     if (node.indices[i] >= 0) {
-                        stack[i] = node.indices[i];
+                        sampleIndicesLoc[i] = node.indices[i];
                         sampleCount++;
                     }
                 }
@@ -572,7 +541,7 @@ namespace mdas {
                 else {
 
                     // New sample index
-                    stack[sampleCount++] = sampleIndex;
+                    sampleIndicesLoc[sampleCount++] = sampleIndex;
 
                     // Split dimension
                     int splitDimension = box.LargestAxis();
@@ -581,18 +550,18 @@ namespace mdas {
                     // Sort 
                     for (int i = 0; i < sampleCount - 1; i++) {
                         for (int j = 0; j < sampleCount - i - 1; j++) {
-                            int a = stack[j];
-                            int b = stack[j + 1];
+                            int a = sampleIndicesLoc[j];
+                            int b = sampleIndicesLoc[j + 1];
                             if (sampleCoordinates[a][splitDimension] > sampleCoordinates[b][splitDimension]) {
-                                swap(stack[j], stack[j + 1]);
+                                swap(sampleIndicesLoc[j], sampleIndicesLoc[j + 1]);
                             }
                         }
                     }
 
                     // Split position
                     int md = sampleCount >> 1;
-                    float splitPosition = 0.5f * (sampleCoordinates[stack[md - 1]][splitDimension] +
-                        sampleCoordinates[stack[md]][splitDimension]);
+                    float splitPosition = 0.5f * (sampleCoordinates[sampleIndicesLoc[md - 1]][splitDimension] +
+                        sampleCoordinates[sampleIndicesLoc[md]][splitDimension]);
                     node.position = splitPosition;
 
                     // Node offset
@@ -621,7 +590,7 @@ namespace mdas {
                     // Left child
                     typename KDTree<Point>::Node left;
                     for (int i = 0; i < 4; ++i) {
-                        if (i < md) left.indices[i] = stack[i];
+                        if (i < md) left.indices[i] = sampleIndicesLoc[i];
                         else left.indices[i] = ~Point::DIM;
                     }
                     nodes[node.left] = left;
@@ -634,7 +603,7 @@ namespace mdas {
                     // Right child
                     typename KDTree<Point>::Node right;
                     for (int i = 0; i < 4; ++i) {
-                        if (i < sampleCount - md) right.indices[i] = stack[md + i];
+                        if (i < sampleCount - md) right.indices[i] = sampleIndicesLoc[md + i];
                         else right.indices[i] = ~Point::DIM;
                     }
                     nodes[node.right] = right;
@@ -1088,39 +1057,6 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::UpdateIndices(void) {
-
-        // Grid and block size
-        int minGridSize, blockSize;
-        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-            updateIndicesKernel<Point>, 0, 0);
-        int gridSize = divCeil(numberOfNodes, blockSize);
-
-        // Timer
-        cudaEvent_t start, stop;
-        if (logStats) {
-            cudaEventCreate(&start);
-            cudaEventCreate(&stop);
-            cudaEventRecord(start, 0);
-        }
-
-        // Launch
-        updateIndicesKernel<Point><<<gridSize, blockSize>>>(numberOfNodes, nodes.Data());
-
-        // Elapsed time and cleanup
-        if (logStats) {
-            float time;
-            cudaEventRecord(stop, 0);
-            cudaEventSynchronize(stop);
-            cudaEventElapsedTime(&time, start, stop);
-            cudaEventDestroy(start);
-            cudaEventDestroy(stop);
-            *log << "UPDATE INDICES TIME\n" << time << std::endl;
-        }
-
-    }
-
-    template <typename Point>
     void KDTree<Point>::ComputeErrors(void) {
 
         // Setup texture references
@@ -1236,34 +1172,7 @@ namespace mdas {
 
     template <typename Point>
     void KDTree<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
-#if 0
-        // Grid and block size
-        const int desiredWarps = 720;
-        dim3 blockSize(32, 4);
-        int blockWarps = (blockSize.x * blockSize.y + 31) / 32; // 4
-        int gridSize = (desiredWarps + blockWarps - 1) / blockWarps;
 
-        // Setup texture references
-        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
-
-        // Reset atomic counter
-        const int zero = 0;
-        cudaMemcpyToSymbol(g_warpCounter0, &zero, sizeof(int));
-
-        // Timer
-        cudaEvent_t start, stop;
-        if (logStats) {
-            cudaEventCreate(&start);
-            cudaEventCreate(&stop);
-            cudaEventRecord(start, 0);
-        }
-
-        // Launch
-        integrateKernel<Point><<<gridSize, blockSize>>>(width, height, scaleX, scaleY, 
-            sampleValues.Data(), pixels, pixelsBytes, nodeBoxes.Data());
-
-#else
         // Setup texture references
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
         CUDA_CHECK(cudaBindTexture(0, &t_nodes, nodes.Data(), &desc, sizeof(KDTree::Node) * numberOfNodes));
@@ -1284,9 +1193,6 @@ namespace mdas {
 
         integrateSplattingKernel<Point><<<gridSize, blockSize>>>(GetNumberOfLeaves(), width, height, scaleX, scaleY, 
             leafIndices.Data(), sampleValues.Data(), pixels, nodeBoxes.Data());
-
-
-#endif
 
         // Elapsed time and cleanup
         if (logStats) {

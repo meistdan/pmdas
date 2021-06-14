@@ -430,7 +430,6 @@ void integrateMdas(sutil::CUDAOutputBuffer<float4>& output_buffer, sutil::CUDAOu
 {
     float4* result_buffer_data = output_buffer.map();
     uchar4* result_buffer_data_bytes = output_buffer_bytes.map();
-    kdtree->UpdateIndices();
     kdtree->Validate();
     kdtree->Integrate(result_buffer_data, result_buffer_data_bytes, width, height);
     output_buffer.unmap();

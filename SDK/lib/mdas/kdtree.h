@@ -52,7 +52,6 @@ public:
 
     void InitialSampling(void);
     void Construct(void);
-    void UpdateIndices(void);
 
     void ComputeErrors(void);
     void AdaptiveSampling(void);
