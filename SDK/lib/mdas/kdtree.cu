@@ -76,11 +76,6 @@ namespace mdas {
     template void KDTree<Point5>::InitialSampling(void);
     template void KDTree<Point6>::InitialSampling(void);
 
-    template void KDTree<Point3>::Construct(void);
-    template void KDTree<Point4>::Construct(void);
-    template void KDTree<Point5>::Construct(void);
-    template void KDTree<Point6>::Construct(void);
-
     template void KDTree<Point3>::ComputeErrors(void);
     template void KDTree<Point4>::ComputeErrors(void);
     template void KDTree<Point5>::ComputeErrors(void);
@@ -90,11 +85,6 @@ namespace mdas {
     template void KDTree<Point4>::AdaptiveSampling(void);
     template void KDTree<Point5>::AdaptiveSampling(void);
     template void KDTree<Point6>::AdaptiveSampling(void);
-
-    template void KDTree<Point3>::Build(void);
-    template void KDTree<Point4>::Build(void);
-    template void KDTree<Point5>::Build(void);
-    template void KDTree<Point6>::Build(void);
 
     template void KDTree<Point3>::SamplingPass(void);
     template void KDTree<Point4>::SamplingPass(void);
@@ -133,8 +123,8 @@ namespace mdas {
 
     template <typename Point>
     __global__ void uniformSamplingKernel(
-        int numberOfLeaves,
-        int samplesPerLeaf,
+        int numberOfNodes,
+        int samplesPerNode,
         int bitsPerDim,
         int extraImgBits,
         float scaleX,
@@ -147,10 +137,10 @@ namespace mdas {
         unsigned int* seeds
     ) {
 
-        // Leaf index
-        const int leafIndex = blockDim.x * blockIdx.x + threadIdx.x;
+        // Node index
+        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
-        if (leafIndex < numberOfLeaves) {
+        if (nodeIndex < numberOfNodes) {
 
             // Cell offset and extent
             Point offset;
@@ -160,12 +150,12 @@ namespace mdas {
                 unsigned int extentInv = 1 << bitsPerDim;
                 for (int k = 0; k < bitsPerDim; ++k) {
                     int i = Point::DIM * k + (Point::DIM - j - 1);
-                    xq |= ((leafIndex >> i) & 1) << k;
+                    xq |= ((nodeIndex >> i) & 1) << k;
                 }
                 if (j < 2) {
                     for (int k = bitsPerDim; k < bitsPerDim + extraImgBits; ++k) {
                         int i = Point::DIM * bitsPerDim + 2 * (k - bitsPerDim) + 1 - j;
-                        xq |= ((leafIndex >> i) & 1) << k;
+                        xq |= ((nodeIndex >> i) & 1) << k;
                     }
                     extentInv <<= extraImgBits;
                 }
@@ -179,8 +169,8 @@ namespace mdas {
 
             // Uniform sampling
             typename KDTree<Point>::Node node;
-            unsigned int seed = tea<4>(leafIndex, 0);
-            for (int j = 0; j < samplesPerLeaf; ++j) {
+            unsigned int seed = tea<4>(nodeIndex, 0);
+            for (int j = 0; j < samplesPerNode; ++j) {
 
                 // Random point
                 Point r;
@@ -188,7 +178,7 @@ namespace mdas {
                     r.data[i] = rnd(seed);
 
                 // Sample index
-                int sampleIndex = samplesPerLeaf * leafIndex + j;
+                int sampleIndex = samplesPerNode * nodeIndex + j;
 
                 // Transform sample to the cell extent
                 sampleCoordinates[sampleIndex] = offset + r * extent;
@@ -197,11 +187,10 @@ namespace mdas {
                 node.indices[j] = sampleIndex;
 
             }
-            seeds[leafIndex] = seed;
+            seeds[nodeIndex] = seed;
 
             // Node index and error
-            int nodeIndex = leafIndex + numberOfLeaves - 1;
-            leafIndices[leafIndex] = nodeIndex;
+            leafIndices[nodeIndex] = nodeIndex;
             nodeErrors[nodeIndex] = -1.0f;
 
             // Write node
@@ -212,65 +201,6 @@ namespace mdas {
             box.mn = offset;
             box.mx = offset + extent;
             nodeBoxes[nodeIndex] = box;
-
-        }
-
-    }
-
-    template <typename Point>
-    __global__ void constructKernel(
-        int numberOfInteriors,
-        int bitsPerDim,
-        int extraImgBits,
-        float scaleX,
-        float scaleY,
-        KDTree<Point>::Node* nodes
-    ) {
-
-        // Node index
-        const int nodeIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-        if (nodeIndex < numberOfInteriors) {
-
-            // Split dimension
-            const int bit = 8 * sizeof(unsigned int) - __clz(unsigned int(nodeIndex + 1)) - 1;
-            int dimension = bit < 2 * extraImgBits ? bit & 1 : (bit - 2 * extraImgBits) % Point::DIM;
-
-            // Split position
-            unsigned int c = nodeIndex - (1 << bit) + 1;
-            float increase = 0.5f;
-            float position = 0.0f;
-#if 0
-            for (int t = bit - dimension - 1; t >= 0; t -= Point::DIM) {
-                if ((c >> t) & 1) position += increase;
-                increase *= 0.5f;
-            }
-#else
-            int delta = 2;
-            int tm = bit - dimension - 1;
-            int t0 = tm;
-            int th = tm;
-            if (dimension < 2) th -= 2 * extraImgBits;
-            else t0 -= 2 * extraImgBits;
-            for (int t = t0; t >= 0; t -= delta) {
-                if ((c >> t) & 1) position += increase;
-                if (t <= th) delta = Point::DIM;
-                increase *= 0.5f;
-            }
-#endif
-            position += increase;
-
-            // Scale
-            if (dimension == 0) position *= scaleX;
-            if (dimension == 1) position *= scaleY;
-
-            // Write node
-            typename KDTree<Point>::Node node;
-            node.right = (nodeIndex + 1) << 1;
-            node.left = node.right - 1;
-            node.dimension = ~dimension;
-            node.position = position;
-            nodes[nodeIndex] = node;
 
         }
 
@@ -402,66 +332,6 @@ namespace mdas {
             // Box
             float4 tmp;
             AABB<Point> box = nodeBoxes[nodeIndex];
-
-#if 0
-            // Stack
-            int stack[STACK_SIZE];
-            stack[0] = EntrypointSentinel;
-
-            // Radius and center
-            const float R = 0.55f;
-            float radius = R * Point::Distance(box.mx, box.mn);
-            Point center = box.Center();
-
-            // Setup traversal
-            int* stackPtr = &stack[0];
-            int curNodeIndex = 0;
-
-            while (curNodeIndex != EntrypointSentinel) {
-
-                // Node
-                tmp = tex1Dfetch(t_nodes, curNodeIndex);
-                typename KDTree<Point>::Node node = *(typename KDTree<Point>::Node*) & tmp;
-
-                // Leaf
-                if (node.Leaf()) {
-
-                    // Update error
-                    error = max(error, nodeErrors[curNodeIndex]);
-    
-                    // Pop
-                    curNodeIndex = *stackPtr;
-                    --stackPtr;
-
-                }
-
-                // Interior
-                else {
-
-                    bool traverseChild0 = center[~node.dimension] - radius <= node.position;
-                    bool traverseChild1 = center[~node.dimension] + radius >= node.position;
-
-                    // Neither child was intersected => pop stack
-                    if (!traverseChild0 && !traverseChild1) {
-                        curNodeIndex = *stackPtr;
-                        --stackPtr;
-                    }
-
-                    // Otherwise => fetch child pointers
-                    else {
-                        curNodeIndex = traverseChild0 ? node.Left() : node.Right();
-
-                        // Both children were intersected => push the one of them
-                        if (traverseChild0 && traverseChild1) {
-                            ++stackPtr;
-                            *stackPtr = node.Right();
-                        }
-                    }
-
-                }
-
-            }
-#endif
 
             if (error >= errorThreshold * g_error) {
 
@@ -1020,43 +890,6 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDTree<Point>::Construct(void) {
-
-        // Number of nodes
-        int numberOfInteriors = numberOfNodes / 2;
-
-        // Grid and block size
-        int minGridSize, blockSize;
-        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
-            constructKernel<Point>, 0, 0);
-        int gridSize = divCeil(numberOfInteriors, blockSize);
-
-        // Timer
-        cudaEvent_t start, stop;
-        if (logStats) {
-            cudaEventCreate(&start);
-            cudaEventCreate(&stop);
-            cudaEventRecord(start, 0);
-        }
-
-        // Launch
-        constructKernel<Point><<<gridSize, blockSize>>>(numberOfInteriors, bitsPerDim,
-            extraImgBits, scaleX, scaleY, nodes.Data());
-
-        // Elapsed time and cleanup
-        if (logStats) {
-            float time;
-            cudaEventRecord(stop, 0);
-            cudaEventSynchronize(stop);
-            cudaEventElapsedTime(&time, start, stop);
-            cudaEventDestroy(start);
-            cudaEventDestroy(stop);
-            *log << "CONSTRUCT TIME\n" << time << std::endl;
-        }
-
-    }
-
-    template <typename Point>
     void KDTree<Point>::ComputeErrors(void) {
 
         // Setup texture references
@@ -1156,12 +989,6 @@ namespace mdas {
             *log << "ADAPTIVE SAMPLING TIME\n" << time << std::endl;
         }
 
-    }
-
-    template <typename Point>
-    void KDTree<Point>::Build() {
-        InitialSampling();
-        Construct();
     }
 
     template <typename Point>

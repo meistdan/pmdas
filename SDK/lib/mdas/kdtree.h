@@ -51,12 +51,10 @@ public:
     );
 
     void InitialSampling(void);
-    void Construct(void);
 
     void ComputeErrors(void);
     void AdaptiveSampling(void);
 
-    void Build(void);
     void SamplingPass(void);
     void Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
     void SamplingDensity(float4* pixels, int width, int height);

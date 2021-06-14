@@ -298,7 +298,7 @@ void initMdas(std::ofstream* log = nullptr)
         scaleFactor * height,
         log
         );
-    kdtree->Build();
+    kdtree->InitialSampling();
 
     params.scale = make_float2(kdtree->GetScaleX(), kdtree->GetScaleY());
     params.sample_coordinates = reinterpret_cast<float*>(kdtree->GetSampleCoordinates().Data());
@@ -353,7 +353,7 @@ void updateState(
         params.subframe_index = 0;
         if (mdas_on)
         {
-            kdtree->Build();
+            kdtree->InitialSampling();
             params.sample_count = kdtree->GetNumberOfSamples();
             params.sample_offset = 0;
         }
