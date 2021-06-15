@@ -121,7 +121,7 @@ protected:
         registerOption("Sampler.mdas", "0", OPT_BOOL);
 
         registerOption("Mdas.scaleFactor", "1.0", OPT_FLOAT);
-        registerOption("Mdas.errorThreshold", "0.025", OPT_FLOAT);
+        registerOption("Mdas.alpha", "0.25", OPT_FLOAT);
         registerOption("Mdas.bitsPerDim", "0", OPT_INT);
         registerOption("Mdas.extraImgBits", "8", OPT_INT);
         registerOption("Mdas.candidatesNum", "4", OPT_INT);
@@ -279,10 +279,10 @@ void initLaunchParams(const sutil::Scene& scene) {
 
 void initMdas(std::ofstream* log = nullptr)
 {
-    float errorThreshold, scaleFactor;
+    float alpha, scaleFactor;
     int bitsPerDim, extraImgBits, candidatesNum;
 
-    Environment::getInstance()->getFloatValue("Mdas.errorThreshold", errorThreshold);
+    Environment::getInstance()->getFloatValue("Mdas.alpha", alpha);
     Environment::getInstance()->getFloatValue("Mdas.scaleFactor", scaleFactor);
     Environment::getInstance()->getIntValue("Mdas.bitsPerDim", bitsPerDim);
     Environment::getInstance()->getIntValue("Mdas.extraImgBits", extraImgBits);
@@ -293,7 +293,7 @@ void initMdas(std::ofstream* log = nullptr)
         candidatesNum,
         bitsPerDim,
         extraImgBits,
-        errorThreshold,
+        alpha,
         scaleFactor * width,
         scaleFactor * height,
         log

@@ -4,13 +4,13 @@ home_drive = "C:/Users/meist/projects"
 optix_bin_dir = home_drive + "/optix/SDK/build/bin/Release/"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test-splatting2")
+out_dir = os.path.join(base_dir, "test")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
 
 ref_enabled = True
-mc_enabled = False
+mc_enabled = True
 mdas_enabled = True
 testing_passes = 1
 
@@ -18,25 +18,24 @@ scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "cryte
 bins = ["optixMotionBlur.exe", "optixDepthOfField.exe", "optixAmbientOcclusion.exe", "optixPathTracer.exe", "optixDirectLighting.exe"]
 bin_labels = ["mb", "dof", "ao", "pt", "dl"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
-# ref_spp = 65536
-ref_spp = 1024
+ref_spp = 65536
 
-scene_indices = [0, 1, 2, 8, 10, 11]
-# scene_indices = [2]
+scene_indices = [0, 1, 2, 10, 11]
+# scene_indices = [8]
 mc_spps = list(range(1, 33))
 spps = [8]
-# extra_img_bits = [4, 6, 8, 10]
-# morton_bits = [3, 2, 1, 0]
-extra_img_bits = [8, 10]
-morton_bits = [1, 0]
-scale_factors = [1/16, 1/8, 1/4, 1/2, 1, 2]
-error_thresholds = [0.01, 0.025, 0.1, 0.25, 0.5]
+extra_img_bits = [4, 6, 8, 10]
+morton_bits = [3, 2, 1, 0]
+# extra_img_bits = [8, 10]
+# morton_bits = [1, 0]
+scale_factors = [1/16, 1/8, 1/4, 1/2, 1]
+alphas = [1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
 
 
-def run(scene, bin, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, testing_pass, mdas, ref):
+def run(scene, bin, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, alpha, testing_pass, mdas, ref):
 
     # test name
     scene = scene
@@ -49,7 +48,7 @@ def run(scene, bin, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, er
             test_name += "-mb-" + str(morton_bit)
             test_name += "-eib-" + str(extra_img_bit)
             test_name += "-sf-" + str(scale_factor)
-            test_name += "-et-" + str(error_threshold)
+            test_name += "-et-" + str(alpha)
         test_name += "-spp-" + str(spp)
         test_name += "-pass-" + str(testing_pass)
 
@@ -82,7 +81,7 @@ def run(scene, bin, bin_label, spp, morton_bit, extra_img_bit,  scale_factor, er
     if mdas:
         test_file.write("Mdas {\n")
         test_file.write("scaleFactor " + str(scale_factor) + "\n")
-        test_file.write("errorThreshold " + str(error_threshold) + "\n")
+        test_file.write("alpha " + str(alpha) + "\n")
         test_file.write("bitsPerDim " + str(morton_bit) + "\n")
         test_file.write("extraImgBits " + str(extra_img_bit) + "\n")
         test_file.write("}\n")
@@ -120,9 +119,9 @@ for scene_index in scene_indices:
         if mdas_enabled:
             for spp in spps:
                 for scale_factor in scale_factors:
-                    for error_threshold in error_thresholds:
+                    for alpha in alphas:
                         for bit_index in range(bits_num):
                             morton_bit = morton_bits[bit_index]
                             extra_img_bit = extra_img_bits[bit_index]
-                            run(scene, bin, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, testing_pass,
+                            run(scene, bin, bin_label, spp, morton_bit, extra_img_bit, scale_factor, alpha, testing_pass,
                                 True, False)
