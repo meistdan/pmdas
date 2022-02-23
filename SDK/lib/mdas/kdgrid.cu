@@ -88,15 +88,20 @@ namespace mdas {
     template void KDGrid<Point5>::SamplingPass(void);
     template void KDGrid<Point6>::SamplingPass(void);
 
-    template void KDGrid<Point3>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDGrid<Point4>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDGrid<Point5>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
-    template void KDGrid<Point6>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point3>::Integrate(float4* pixels, int width, int height);
+    template void KDGrid<Point4>::Integrate(float4* pixels, int width, int height);
+    template void KDGrid<Point5>::Integrate(float4* pixels, int width, int height);
+    template void KDGrid<Point6>::Integrate(float4* pixels, int width, int height);
 
     template void KDGrid<Point3>::SamplingDensity(float4* pixels, int width, int height);
     template void KDGrid<Point4>::SamplingDensity(float4* pixels, int width, int height);
     template void KDGrid<Point5>::SamplingDensity(float4* pixels, int width, int height);
     template void KDGrid<Point6>::SamplingDensity(float4* pixels, int width, int height);
+
+    template void KDGrid<Point3>::ConvertToBytes(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point4>::ConvertToBytes(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point5>::ConvertToBytes(float4* pixels, uchar4* pixelsBytes, int width, int height);
+    template void KDGrid<Point6>::ConvertToBytes(float4* pixels, uchar4* pixelsBytes, int width, int height);
 
     template bool KDGrid<Point3>::Validate(void);
     template bool KDGrid<Point4>::Validate(void);
@@ -778,7 +783,7 @@ namespace mdas {
     }
 
     template <typename Point>
-    void KDGrid<Point>::Integrate(float4* pixels, uchar4* pixelsBytes, int width, int height) {
+    void KDGrid<Point>::Integrate(float4* pixels, int width, int height) {
 
         // Setup texture references
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
@@ -830,6 +835,15 @@ namespace mdas {
         }
         for (int i = 0; i < width * height; ++i)
             pixels[i].w = 1.0f;
+    }
+
+    template <typename Point>
+    void KDGrid<Point>::ConvertToBytes(float4* pixels, uchar4* pixelsBytes, int width, int height) {
+        int minGridSize, blockSize;
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
+            integrateKernel<Point>, 0, 0);
+        int gridSize = divCeil(width * height, blockSize);
+        convertToBytesKernel<Point><<<gridSize, blockSize>>>(width * height, pixels, pixelsBytes);
     }
 
     template <typename Point>
