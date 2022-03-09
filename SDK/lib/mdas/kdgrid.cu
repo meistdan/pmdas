@@ -11,7 +11,7 @@
 
 namespace mdas {
 
-#define ENABLE_VALIDATION 1
+#define ENABLE_VALIDATION 0
 
 #define divCeil(a, b) (((a) + (b) - 1) / (b))
 #define roundUp(a, b) (divCeil(a, b) * (b))
@@ -21,11 +21,6 @@ namespace mdas {
     __device__ float g_error;
 
     texture<float4, 1> t_nodes;
-
-    enum {
-        MaxBlockHeight = 6,                     // Upper bound for blockDim.y
-        EntrypointSentinel = 0x76543210,        // Bottom-most stack entry, indicating the end of traversal
-    };
 
     template KDGrid<Point3>::KDGrid(
         int maxSamples,
@@ -784,6 +779,9 @@ namespace mdas {
 
     template <typename Point>
     void KDGrid<Point>::Integrate(float4* pixels, int width, int height) {
+
+        // Reset pixels
+        cudaMemset(pixels, 0, sizeof(float4) * width * height);
 
         // Setup texture references
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();

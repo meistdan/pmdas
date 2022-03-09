@@ -11,6 +11,7 @@ public:
 
     __host__ __device__ __inline__ float get() { 
         float sample = halton(cur_dim, cur_index) + offsets[cur_dim];
+        if (sample > 1.0f) sample -= 1.0f;
         ++cur_dim;
         return sample;
     }
