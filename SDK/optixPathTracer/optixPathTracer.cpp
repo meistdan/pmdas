@@ -88,7 +88,7 @@ int32_t                 width = 1920;
 int32_t                 height = 1080;
 
 // MDAS
-const int MAX_DEPTH = 2;
+const int MAX_DEPTH = 1;
 typedef mdas::PointN<2 + 2 * MAX_DEPTH> Point;
 mdas::KDGrid<Point>* kdgrid = nullptr;
 

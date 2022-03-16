@@ -1,16 +1,16 @@
 import os
 
-home_drive = "C:/Users/meist/projects"
+home_drive = "C:/Users/rpr/Desktop/meistdan"
 optix_bin_dir = home_drive + "/optix/SDK/build/bin/Release/"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test-hd")
+out_dir = os.path.join(base_dir, "test-jcgt")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 os.chdir(optix_bin_dir)
 
-ref_enabled = False
-mc_enabled = False
+ref_enabled = True
+mc_enabled = True
 mdas_enabled = True
 testing_passes = 1
 
@@ -21,19 +21,19 @@ bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
 ref_spp = 65536
 
 # scene_indices = [0, 1, 2, 10, 11]
+scene_indices = [11]
 # scene_indices = [8]
-scene_indices = [10]
 mc_spps = list(range(1, 33))
-spps = [8]
+spps = [4, 8]
 # spps = [4]
 # extra_img_bits = [4, 6, 8, 10]
 # morton_bits = [3, 2, 1, 0]
 # extra_img_bits = [7, 10]
 # morton_bits = [1, 0]
-extra_img_bits = [7, 9, 11]
-morton_bits = [2, 1, 0]
-scale_factors = [1/16, 1/8, 1/4, 1/2, 1]
-alphas = [1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1]
+extra_img_bits = [7, 8, 10]
+morton_bits = [1, 1, 0]
+scale_factors = [1/16, 1/4, 1/2, 1]
+alphas = [1/64, 1/32, 1/16, 1/4]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)

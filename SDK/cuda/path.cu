@@ -364,6 +364,7 @@ extern "C" __global__ void __closesthit__radiance()
         payload->direction = L;
 
         payload->attenuation *= opacity * N_dot_L * (diff + spec) / pdf;
+        if (pdf == 0.0f) payload->attenuation = make_float3(0.0f);
         //payload->attenuation *= base_color;
     }
     payload->origin = geom.P + N * 1.0e-4f;

@@ -1,14 +1,15 @@
 import os
+os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-home_drive = "C:/Users/meist/projects"
+home_drive = "C:/Users/rpr/Desktop/meistdan"
 base_dir = home_drive + "/optix/SDK/data/"
 
-test_dir = os.path.join(base_dir, "test")
+test_dir = os.path.join(base_dir, "test-jcgt")
 
-out_dir = os.path.join(base_dir, "jcgt")
+out_dir = os.path.join(base_dir, "jcgt-rev")
 if not (os.path.exists(out_dir)):
     os.mkdir(out_dir)
 
@@ -456,7 +457,7 @@ run("cornell-box", "pt", 8, 7, 1, 7, 1, 0.0625, 2.2, [[540, 775], [100, 100]], [
 run("breakfast", "pt", 8, 7, 1, 8, 0.5, 0.015625, 2.2, [[585, 655], [100, 75]], [[245, 335], [80, 60]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-1, test_dir)
 
 # dragon-dl-mdas-mb-0-eib-10-sf-0.25-et-0.015625-spp-8
-run("dragon", "dl", 8, 13, 0, 10, 0.25, 0.015625, 2.2, [[140, 510], [100, 75]], [[585, 270], [40, 30]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 3.0e-2, test_dir)
+run("dragon", "dl", 8, 13, 1, 8, 0.25, 0.015625, 2.2, [[140, 510], [100, 75]], [[585, 270], [40, 30]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 3.0e-2, test_dir)
 
 
 # pool-mb-mdas-mb-1-eib-8-sf-0.0625-et-0.25-spp-4

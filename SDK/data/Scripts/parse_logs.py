@@ -1,11 +1,12 @@
 import os
+os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
 import cv2
 import numpy as np
 
-home_drive = "C:/Users/meist/projects"
+home_drive = "C:/Users/rpr/Desktop/meistdan"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test-hd")
+out_dir = os.path.join(base_dir, "test-jcgt")
 os.chdir(out_dir)
 
 testing_passes = 1
@@ -17,16 +18,16 @@ bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
 # scene_indices = [1, 2, 10, 11]
 scene_indices = [10]
 mc_spps = list(range(1, 33))
-spps = [8]
+spps = [4, 8]
 # spps = [4]
 # extra_img_bits = [4, 6, 8, 10]
 # morton_bits = [3, 2, 1, 0]
 # extra_img_bits = [4, 7, 10]
 # morton_bits = [2, 1, 0]
-extra_img_bits = [7, 9, 11, 4, 6, 8, 10]
-morton_bits = [2, 1, 0, 3, 2, 1, 0]
-scale_factors = [1/16, 1/8, 1/4, 1/2, 1]
-error_thresholds = [1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1]
+extra_img_bits = [7, 8, 10]
+morton_bits = [1, 1, 0]
+scale_factors = [1/16, 1/4, 1/2, 1]
+alphas = [1/64, 1/32, 1/16, 1/4]
 
 assert(len(morton_bits) == len(extra_img_bits))
 bits_num = len(morton_bits)
@@ -62,7 +63,7 @@ def get_values(key, filename):
     return res
 
 
-def run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, mdas):
+def run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, alpha, mdas):
 
     # test name
     test_name = scene + "-" + bin_label
@@ -71,7 +72,7 @@ def run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_th
         test_name += "-mb-" + str(morton_bit)
         test_name += "-eib-" + str(extra_img_bit)
         test_name += "-sf-" + str(scale_factor)
-        test_name += "-et-" + str(error_threshold)
+        test_name += "-et-" + str(alpha)
     test_name += "-spp-" + str(spp)
 
     table_file = open(os.path.join(out_dir, table_filename), "a")
@@ -180,7 +181,7 @@ def run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_th
     table_file.close()
 
 
-# scene_index, spp, morton_bit, extra_img_bit,  scale_factor, error_threshold, mdas
+# scene_index, spp, morton_bit, extra_img_bit,  scale_factor, alpha, mdas
 for scene_index in scene_indices:
 
     scene = scenes[scene_index]
@@ -230,9 +231,9 @@ for scene_index in scene_indices:
         run(scene, bin_label, spp, 0, 0, 0, 0, False)
 
     for spp in spps:
-        for error_threshold in error_thresholds:
+        for alpha in alphas:
             for bit_index in range(bits_num):
                 for scale_factor in scale_factors:
                     morton_bit = morton_bits[bit_index]
                     extra_img_bit = extra_img_bits[bit_index]
-                    run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, error_threshold, True)
+                    run(scene, bin_label, spp, morton_bit, extra_img_bit, scale_factor, alpha, True)
