@@ -20,8 +20,7 @@ bin_labels = ["mb", "dof", "ao", "pt", "dl"]
 bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
 ref_spp = 65536
 
-# scene_indices = [0, 1, 2, 10, 11]
-scene_indices = [11]
+scene_indices = [0, 1, 2, 10, 11]
 # scene_indices = [8]
 mc_spps = list(range(1, 33))
 spps = [4, 8]

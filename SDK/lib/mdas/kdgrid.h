@@ -44,7 +44,7 @@ public:
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold,
+        float alpha,
         float scaleX,
         float scaleY,
         std::ofstream* log
@@ -93,7 +93,7 @@ private:
 
     float scaleX;
     float scaleY;
-    float errorThreshold;
+    float alpha;
 
     Buffer<Point> sampleCoordinates;
     Buffer<float3> sampleValues;

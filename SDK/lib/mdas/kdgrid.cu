@@ -27,7 +27,7 @@ namespace mdas {
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold,
+        float alpha,
         float scaleX,
         float scaleY,
         std::ofstream* log
@@ -37,7 +37,7 @@ namespace mdas {
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold,
+        float alpha,
         float scaleX,
         float scaleY,
         std::ofstream* log
@@ -47,7 +47,7 @@ namespace mdas {
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold,
+        float alpha,
         float scaleX,
         float scaleY,
         std::ofstream* log
@@ -57,7 +57,7 @@ namespace mdas {
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold,
+        float alpha,
         float scaleX,
         float scaleY,
         std::ofstream* log
@@ -293,7 +293,7 @@ namespace mdas {
         int numberOfSamples,
         int maxNodeSize,
         int candidatesNum,
-        float errorThreshold,
+        float alpha,
         float* nodeErrors,
         KDGrid<Point>::Node* nodes,
         AABB<Point>* nodeBoxes,
@@ -319,7 +319,11 @@ namespace mdas {
             float4 tmp;
             AABB<Point> box = nodeBoxes[nodeIndex];
 
-            if (error >= errorThreshold * g_error) {
+            // Seed
+            unsigned int seed = seeds[nodeIndex];
+            if (seed == 0) seed = tea<4>(nodeIndex, 0);
+
+            if (powf(error / g_error, alpha) >= rnd(seed)) {
 
                 // Node
                 tmp = tex1Dfetch(t_nodes, nodeIndex);
@@ -329,8 +333,6 @@ namespace mdas {
                 float maxDistance = -1.0;
                 Point maxCandidate;
                 Point diag = box.Diagonal();
-                unsigned int seed = seeds[nodeIndex];
-                if (seed == 0) seed = tea<4>(nodeIndex, 0);
                 for (int j = 0; j < candidatesNum; ++j) {
 
                     // Generate candidate
@@ -357,7 +359,6 @@ namespace mdas {
                     }
 
                 }
-                seeds[nodeIndex] = seed;
 
                 // Sample index
                 int sampleIndex;
@@ -471,6 +472,9 @@ namespace mdas {
                 }
 
             }
+
+            // Save seed
+            seeds[nodeIndex] = seed;
 
         }
 
@@ -599,7 +603,7 @@ namespace mdas {
         int candidatesNum,
         int bitsPerDim,
         int extraImgBits,
-        float errorThreshold, 
+        float alpha, 
         float scaleX, 
         float scaleY, 
         std::ofstream* log
@@ -613,7 +617,7 @@ namespace mdas {
         maxSamples(maxSamples),
         scaleX(scaleX),
         scaleY(scaleY),
-        errorThreshold(errorThreshold),
+        alpha(alpha),
         logStats(false),
         log(log)
     {
@@ -741,7 +745,7 @@ namespace mdas {
             numberOfSamples,
             maxNodeSize,
             candidatesNum,
-            errorThreshold,
+            alpha,
             nodeErrors.Data(),
             nodes.Data(),
             nodeBoxes.Data(),
