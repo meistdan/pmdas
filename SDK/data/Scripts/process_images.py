@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 home_drive = "C:/Users/rpr/Desktop/meistdan"
 base_dir = home_drive + "/optix/SDK/data/"
 
-test_dir = os.path.join(base_dir, "test-jcgt")
+test_dir = os.path.join(base_dir, "test-jcgt-rev")
 
 out_dir = os.path.join(base_dir, "jcgt-rev")
 if not (os.path.exists(out_dir)):
@@ -95,7 +95,6 @@ def get_values(key, filename):
 
 def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_factor, alpha, gamma, rect0,
         rect1, col0, col1, bar_width, bar_height, vertical, ext, min_val, max_val, test_dir):
-
     # scene name extension
     print(scene)
     scene_ext = scene
@@ -108,6 +107,10 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     ref_test_name += "-reference"
     ref_filename = os.path.join(test_dir, ref_test_name + ".exr")
     ref_image = read_image(ref_filename)
+
+    ref_test_name_denoised = ref_test_name + "-denoised"
+    ref_filename_denoised = os.path.join(test_dir, ref_test_name_denoised + ".exr")
+    ref_image_denoised = read_image(ref_filename_denoised)
 
     # mdas and mc
     scene = scene
@@ -143,12 +146,18 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     mdas_mse_image = mse(ref_image, mdas_image)
     mdas_mse = np.mean(mdas_mse_image)
     mdas_mse_image = falsecolor(mdas_mse_image, err_color_map, min_val, mc_mse if max_val <= 0 else max_val)
+    ref_mse_image = mse(ref_image, ref_image)
+    ref_mse = np.mean(ref_mse_image)
+    ref_mse_image = falsecolor(ref_mse_image, err_color_map, min_val, mc_mse if max_val <= 0 else max_val)
     mc_relmse_image = rel_mse(ref_image, mc_image)
     mc_relmse = np.mean(mc_relmse_image.mean())
     mc_relmse_image = falsecolor(mc_relmse_image, err_color_map, min_val, mc_relmse if max_val <= 0 else max_val)
     mdas_relmse_image = rel_mse(ref_image, mdas_image)
     mdas_relmse = np.mean(mdas_relmse_image)
     mdas_relmse_image = falsecolor(mdas_relmse_image, err_color_map, min_val, mc_relmse if max_val <= 0 else max_val)
+    ref_relmse_image = rel_mse(ref_image, ref_image)
+    ref_relmse = np.mean(ref_relmse_image)
+    ref_relmse_image = falsecolor(ref_relmse_image, err_color_map, min_val, mc_relmse if max_val <= 0 else max_val)
 
     mc_mse_image_denoised = mse(ref_image, mc_image_denoised)
     mc_mse_denoised = np.mean(mc_mse_image_denoised)
@@ -156,12 +165,18 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     mdas_mse_image_denoised = mse(ref_image, mdas_image_denoised)
     mdas_mse_denoised = np.mean(mdas_mse_image_denoised)
     mdas_mse_image_denoised = falsecolor(mdas_mse_image_denoised, err_color_map, min_val, mc_mse_denoised if max_val <= 0 else max_val)
+    ref_mse_image_denoised = mse(ref_image, ref_image_denoised)
+    ref_mse_denoised = np.mean(ref_mse_image_denoised)
+    ref_mse_image_denoised = falsecolor(ref_mse_image_denoised, err_color_map, min_val, mc_mse_denoised if max_val <= 0 else max_val)
     mc_relmse_image_denoised = rel_mse(ref_image, mc_image_denoised)
     mc_relmse_denoised = np.mean(mc_relmse_image_denoised.mean())
     mc_relmse_image_denoised = falsecolor(mc_relmse_image_denoised, err_color_map, min_val, mc_relmse_denoised if max_val <= 0 else max_val)
     mdas_relmse_image_denoised = rel_mse(ref_image, mdas_image_denoised)
     mdas_relmse_denoised = np.mean(mdas_relmse_image_denoised)
     mdas_relmse_image_denoised = falsecolor(mdas_relmse_image_denoised, err_color_map, min_val, mc_relmse_denoised if max_val <= 0 else max_val)
+    ref_relmse_image_denoised = rel_mse(ref_image, ref_image_denoised)
+    ref_relmse_denoised = np.mean(ref_relmse_image_denoised)
+    ref_relmse_image_denoised = falsecolor(ref_relmse_image_denoised, err_color_map, min_val, mc_relmse_denoised if max_val <= 0 else max_val)
 
     # density colormap
     mdas_image_density_fc = falsecolor(mdas_image_density, density_color_map)
@@ -233,6 +248,7 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
 
     # hdr to ldr
     ref_image_ldr = 255 * np.clip(ref_image ** (1 / gamma), 0, 1)
+    ref_image_denoised_ldr = 255 * np.clip(ref_image_denoised ** (1 / gamma), 0, 1)
     mdas_image_ldr = 255 * np.clip(mdas_image ** (1 / gamma), 0, 1)
     mc_image_ldr = 255 * np.clip(mc_image ** (1 / gamma), 0, 1)
     mdas_image_denoised_ldr = 255 * np.clip(mdas_image_denoised ** (1 / gamma), 0, 1)
@@ -241,12 +257,16 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     mdas_image_density_fc_ldr = 255 * mdas_image_density_fc
     mdas_mse_image_ldr = 255 * mdas_mse_image
     mc_mse_image_ldr = 255 * mc_mse_image
+    ref_mse_image_ldr = 255 * ref_mse_image
     mdas_relmse_image_ldr = 255 * mdas_relmse_image
     mc_relmse_image_ldr = 255 * mc_relmse_image
+    ref_relmse_image_ldr = 255 * ref_relmse_image
     mdas_mse_image_denoised_ldr = 255 * mdas_mse_image_denoised
     mc_mse_image_denoised_ldr = 255 * mc_mse_image_denoised
+    ref_mse_image_denoised_ldr = 255 * ref_mse_image_denoised
     mdas_relmse_image_denoised_ldr = 255 * mdas_relmse_image_denoised
     mc_relmse_image_denoised_ldr = 255 * mc_relmse_image_denoised
+    ref_relmse_image_denoised_ldr = 255 * ref_relmse_image_denoised
     err_bar_ldr = 255 * err_bar
     density_bar_ldr = 255 * density_bar
 
@@ -254,86 +274,70 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     bw = 7
     bwc = 2
 
-    (ref_image_ldr, ref_image_ldr_closeup0) = crop_image(ref_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                         rect0[1][1], bw, bwc, col0)
-    (ref_image_ldr, ref_image_ldr_closeup1) = crop_image(ref_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                         rect1[1][1], bw, bwc, col1)
+    (ref_image_ldr, ref_image_ldr_closeup0) = crop_image(ref_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_image_ldr, ref_image_ldr_closeup1) = crop_image(ref_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_image_ldr, mdas_image_ldr_closeup0) = crop_image(mdas_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_image_ldr, mdas_image_ldr_closeup1) = crop_image(mdas_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_image_ldr, mc_image_ldr_closeup0) = crop_image(mc_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_image_ldr, mc_image_ldr_closeup1) = crop_image(mc_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_image_ldr, mdas_image_ldr_closeup0) = crop_image(mdas_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_image_ldr, mdas_image_ldr_closeup1) = crop_image(mdas_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_image_ldr, mc_image_ldr_closeup0) = crop_image(mc_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_image_ldr, mc_image_ldr_closeup1) = crop_image(mc_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
+    (ref_image_denoised_ldr, ref_image_denoised_ldr_closeup0) = crop_image(ref_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_image_denoised_ldr, ref_image_denoised_ldr_closeup1) = crop_image(ref_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_image_denoised_ldr, mdas_image_denoised_ldr_closeup0) = crop_image(mdas_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_image_denoised_ldr, mdas_image_denoised_ldr_closeup1) = crop_image(mdas_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_image_denoised_ldr, mc_image_denoised_ldr_closeup0) = crop_image(mc_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_image_denoised_ldr, mc_image_denoised_ldr_closeup1) = crop_image(mc_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_image_denoised_ldr, mdas_image_denoised_ldr_closeup0) = crop_image(mdas_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_image_denoised_ldr, mdas_image_denoised_ldr_closeup1) = crop_image(mdas_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_image_denoised_ldr, mc_image_denoised_ldr_closeup0) = crop_image(mc_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_image_denoised_ldr, mc_image_denoised_ldr_closeup1) = crop_image(mc_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
+    (ref_mse_image_ldr, ref_mse_image_ldr_closeup0) = crop_image(ref_mse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_mse_image_ldr, ref_mse_image_ldr_closeup1) = crop_image(ref_mse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_mse_image_ldr, mdas_mse_image_ldr_closeup0) = crop_image(mdas_mse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_mse_image_ldr, mdas_mse_image_ldr_closeup1) = crop_image(mdas_mse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_mse_image_ldr, mc_mse_image_ldr_closeup0) = crop_image(mc_mse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_mse_image_ldr, mc_mse_image_ldr_closeup1) = crop_image(mc_mse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_mse_image_ldr, mdas_mse_image_ldr_closeup0) = crop_image(mdas_mse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_mse_image_ldr, mdas_mse_image_ldr_closeup1) = crop_image(mdas_mse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_mse_image_ldr, mc_mse_image_ldr_closeup0) = crop_image(mc_mse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_mse_image_ldr, mc_mse_image_ldr_closeup1) = crop_image(mc_mse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
+    (ref_relmse_image_ldr, ref_relmse_image_ldr_closeup0) = crop_image(ref_relmse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_relmse_image_ldr, ref_relmse_image_ldr_closeup1) = crop_image(ref_relmse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_relmse_image_ldr, mdas_relmse_image_ldr_closeup0) = crop_image(mdas_relmse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_relmse_image_ldr, mdas_relmse_image_ldr_closeup1) = crop_image(mdas_relmse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_relmse_image_ldr, mc_relmse_image_ldr_closeup0) = crop_image(mc_relmse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_relmse_image_ldr, mc_relmse_image_ldr_closeup1) = crop_image(mc_relmse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_relmse_image_ldr, mdas_relmse_image_ldr_closeup0) = crop_image(mdas_relmse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_relmse_image_ldr, mdas_relmse_image_ldr_closeup1) = crop_image(mdas_relmse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_relmse_image_ldr, mc_relmse_image_ldr_closeup0) = crop_image(mc_relmse_image_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_relmse_image_ldr, mc_relmse_image_ldr_closeup1) = crop_image(mc_relmse_image_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
+    (ref_mse_image_denoised_ldr, ref_mse_image_denoised_ldr_closeup0) = crop_image(ref_mse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_mse_image_denoised_ldr, ref_mse_image_denoised_ldr_closeup1) = crop_image(ref_mse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_mse_image_denoised_ldr, mdas_mse_image_denoised_ldr_closeup0) = crop_image(mdas_mse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_mse_image_denoised_ldr, mdas_mse_image_denoised_ldr_closeup1) = crop_image(mdas_mse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_mse_image_denoised_ldr, mc_mse_image_denoised_ldr_closeup0) = crop_image(mc_mse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_mse_image_denoised_ldr, mc_mse_image_denoised_ldr_closeup1) = crop_image(mc_mse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_mse_image_denoised_ldr, mdas_mse_image_denoised_ldr_closeup0) = crop_image(mdas_mse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_mse_image_denoised_ldr, mdas_mse_image_denoised_ldr_closeup1) = crop_image(mdas_mse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_mse_image_denoised_ldr, mc_mse_image_denoised_ldr_closeup0) = crop_image(mc_mse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_mse_image_denoised_ldr, mc_mse_image_denoised_ldr_closeup1) = crop_image(mc_mse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
+    (ref_relmse_image_denoised_ldr, ref_relmse_image_denoised_ldr_closeup0) = crop_image(ref_relmse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (ref_relmse_image_denoised_ldr, ref_relmse_image_denoised_ldr_closeup1) = crop_image(ref_relmse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_relmse_image_denoised_ldr, mdas_relmse_image_denoised_ldr_closeup0) = crop_image(mdas_relmse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_relmse_image_denoised_ldr, mdas_relmse_image_denoised_ldr_closeup1) = crop_image(mdas_relmse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mc_relmse_image_denoised_ldr, mc_relmse_image_denoised_ldr_closeup0) = crop_image(mc_relmse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mc_relmse_image_denoised_ldr, mc_relmse_image_denoised_ldr_closeup1) = crop_image(mc_relmse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
-    (mdas_relmse_image_denoised_ldr, mdas_relmse_image_denoised_ldr_closeup0) = crop_image(mdas_relmse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_relmse_image_denoised_ldr, mdas_relmse_image_denoised_ldr_closeup1) = crop_image(mdas_relmse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mc_relmse_image_denoised_ldr, mc_relmse_image_denoised_ldr_closeup0) = crop_image(mc_relmse_image_denoised_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1],
-                                                       bw, bwc, col0)
-    (mc_relmse_image_denoised_ldr, mc_relmse_image_denoised_ldr_closeup1) = crop_image(mc_relmse_image_denoised_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1],
-                                                       bw, bwc, col1)
-
-    (mdas_image_density_ldr, mdas_image_density_ldr_closeup0) = crop_image(mdas_image_density_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_image_density_ldr, mdas_image_density_ldr_closeup1) = crop_image(mdas_image_density_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
-    (mdas_image_density_fc_ldr, mdas_image_density_fc_ldr_closeup0) = crop_image(mdas_image_density_fc_ldr, rect0[0][0], rect0[0][1], rect0[1][0],
-                                                           rect0[1][1], bw, bwc, col0)
-    (mdas_image_density_fc_ldr,mdas_image_density_fc_ldr_closeup1) = crop_image(mdas_image_density_fc_ldr, rect1[0][0], rect1[0][1], rect1[1][0],
-                                                           rect1[1][1], bw, bwc, col1)
+    (mdas_image_density_ldr, mdas_image_density_ldr_closeup0) = crop_image(mdas_image_density_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_image_density_ldr, mdas_image_density_ldr_closeup1) = crop_image(mdas_image_density_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
+    (mdas_image_density_fc_ldr, mdas_image_density_fc_ldr_closeup0) = crop_image(mdas_image_density_fc_ldr, rect0[0][0], rect0[0][1], rect0[1][0], rect0[1][1], bw, bwc, col0)
+    (mdas_image_density_fc_ldr, mdas_image_density_fc_ldr_closeup1) = crop_image(mdas_image_density_fc_ldr, rect1[0][0], rect1[0][1], rect1[1][0], rect1[1][1], bw, bwc, col1)
 
     # write highres ldr
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref.png"), ref_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas.png"), mdas_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc.png"), mc_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref-denoised.png"), ref_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-denoised.png"), mdas_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc-denoised.png"), mc_image_denoised_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref-mse.png"), ref_mse_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-mse.png"), mdas_mse_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc-mse.png"), mc_mse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref-relmse.png"), ref_relmse_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-relmse.png"), mdas_relmse_image_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc-relmse.png"), mc_relmse_image_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref-mse-denoised.png"), ref_mse_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc-mse-denoised.png"), mc_mse_image_denoised_ldr)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mc-relmse-denoised.png"), mc_relmse_image_denoised_ldr)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-mdas-density.png"), mdas_image_density_ldr)
@@ -344,22 +348,32 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas.png"), mdas_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc.png"), mc_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mc.png"), mc_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-ref-denoised.png"), ref_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-ref-denoised.png"), ref_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mdas-denoised.png"), mdas_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas-denoised.png"), mdas_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc-denoised.png"), mc_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mc-denoised.png"), mc_image_denoised_ldr_closeup1)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-ref-mse.png"), ref_mse_image_ldr_closeup0)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-ref-mse.png"), ref_mse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mdas-mse.png"), mdas_mse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas-mse.png"), mdas_mse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc-mse.png"), mc_mse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mc-mse.png"), mc_mse_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-ref-relmse.png"), ref_relmse_image_ldr_closeup0)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-ref-relmse.png"), ref_relmse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mdas-relmse.png"), mdas_relmse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas-relmse.png"), mdas_relmse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc-relmse.png"), mc_relmse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mc-relmse.png"), mc_relmse_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-ref-mse-denoised.png"), ref_mse_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-ref-mse-denoised.png"), ref_mse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc-mse-denoised.png"), mc_mse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mc-mse-denoised.png"), mc_mse_image_denoised_ldr_closeup1)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup1-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(highres_dir, scene_ext + "-closeup0-mc-relmse-denoised.png"), mc_relmse_image_denoised_ldr_closeup0)
@@ -378,16 +392,21 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     ref_image_ldr_lowres = cv2.resize(ref_image_ldr, dim_lowres)
     mdas_image_ldr_lowres = cv2.resize(mdas_image_ldr, dim_lowres)
     mc_image_ldr_lowres = cv2.resize(mc_image_ldr, dim_lowres)
+    ref_image_denoised_ldr_lowres = cv2.resize(ref_image_denoised_ldr, dim_lowres)
     mdas_image_denoised_ldr_lowres = cv2.resize(mdas_image_denoised_ldr, dim_lowres)
     mc_image_denoised_ldr_lowres = cv2.resize(mc_image_denoised_ldr, dim_lowres)
     mdas_image_density_ldr_lowres = cv2.resize(mdas_image_density_ldr, dim_lowres)
     mdas_image_density_fc_ldr_lowres = cv2.resize(mdas_image_density_fc_ldr, dim_lowres)
+    ref_mse_image_ldr_lowres = cv2.resize(ref_mse_image_ldr, dim_lowres)
     mdas_mse_image_ldr_lowres = cv2.resize(mdas_mse_image_ldr, dim_lowres)
     mc_mse_image_ldr_lowres = cv2.resize(mc_mse_image_ldr, dim_lowres)
+    ref_relmse_image_ldr_lowres = cv2.resize(ref_relmse_image_ldr, dim_lowres)
     mdas_relmse_image_ldr_lowres = cv2.resize(mdas_relmse_image_ldr, dim_lowres)
     mc_relmse_image_ldr_lowres = cv2.resize(mc_relmse_image_ldr, dim_lowres)
+    ref_mse_image_denoised_ldr_lowres = cv2.resize(ref_mse_image_denoised_ldr, dim_lowres)
     mdas_mse_image_denoised_ldr_lowres = cv2.resize(mdas_mse_image_denoised_ldr, dim_lowres)
     mc_mse_image_denoised_ldr_lowres = cv2.resize(mc_mse_image_denoised_ldr, dim_lowres)
+    ref_relmse_image_denoised_ldr_lowres = cv2.resize(ref_relmse_image_denoised_ldr, dim_lowres)
     mdas_relmse_image_denoised_ldr_lowres = cv2.resize(mdas_relmse_image_denoised_ldr, dim_lowres)
     mc_relmse_image_denoised_ldr_lowres = cv2.resize(mc_relmse_image_denoised_ldr, dim_lowres)
 
@@ -395,14 +414,19 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref.png"), ref_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas.png"), mdas_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc.png"), mc_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref-denoised.png"), ref_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-denoised.png"), mdas_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc-denoised.png"), mc_image_denoised_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref-mse.png"), ref_mse_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-mse.png"), mdas_mse_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc-mse.png"), mc_mse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref-relmse.png"), ref_relmse_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-relmse.png"), mdas_relmse_image_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc-relmse.png"), mc_relmse_image_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref-mse-denoised.png"), ref_mse_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc-mse-denoised.png"), mc_mse_image_denoised_ldr_lowres)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mc-relmse-denoised.png"), mc_relmse_image_denoised_ldr_lowres)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-mdas-density.png"), mdas_image_density_ldr_lowres)
@@ -413,22 +437,32 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas.png"), mdas_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc.png"), mc_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mc.png"), mc_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-ref-denoised.png"), ref_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-ref-denoised.png"), ref_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mdas-denoised.png"), mdas_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas-denoised.png"), mdas_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc-denoised.png"), mc_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mc-denoised.png"), mc_image_denoised_ldr_closeup1)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-ref-mse.png"), ref_mse_image_ldr_closeup0)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-ref-mse.png"), ref_mse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mdas-mse.png"), mdas_mse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas-mse.png"), mdas_mse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc-mse.png"), mc_mse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mc-mse.png"), mc_mse_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-ref-relmse.png"), ref_relmse_image_ldr_closeup0)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-ref-relmse.png"), ref_relmse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mdas-relmse.png"), mdas_relmse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas-relmse.png"), mdas_relmse_image_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc-relmse.png"), mc_relmse_image_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mc-relmse.png"), mc_relmse_image_ldr_closeup1)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-ref-mse-denoised.png"), ref_mse_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-ref-mse-denoised.png"), ref_mse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas-mse-denoised.png"), mdas_mse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc-mse-denoised.png"), mc_mse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mc-mse-denoised.png"), mc_mse_image_denoised_ldr_closeup1)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr_closeup0)
+    cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-ref-relmse-denoised.png"), ref_relmse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr_closeup0)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup1-mdas-relmse-denoised.png"), mdas_relmse_image_denoised_ldr_closeup1)
     cv2.imwrite(os.path.join(lowres_dir, scene_ext + "-closeup0-mc-relmse-denoised.png"), mc_relmse_image_denoised_ldr_closeup0)
@@ -445,20 +479,19 @@ def run(scene, bin_label, mdas_spp, mc_spp, morton_bit, extra_img_bit, scale_fac
 run("pool", "mb", 4, 6, 1, 8, 0.0625, 0.25, 2.2, [[364, 340], [50, 50]], [[234, 757], [50, 50]], [35, 51, 239], [70, 187, 95], 64, 512, True, "", 0, 5.0e-3, test_dir)
 
 # chess-dof-mdas-mb-1-eib-8-sf-1-et-0.25-spp-8
-run("chess", "dof", 8, 10, 1, 8, 1, 0.25, 2.2, [[40, 604], [90, 90]], [[590, 355], [75, 75]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-2, test_dir)
+run("chess", "dof", 8, 11, 1, 8, 1, 0.25, 2.2, [[40, 604], [90, 90]], [[590, 355], [75, 75]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-2, test_dir)
 
 # Bistro-dof-mdas-mb-0-eib-10-sf-0.0625-et-0.03125-spp-8
-run("Bistro", "dof", 8, 8, 0, 10, 0.0625, 0.03125, 2.2, [[990, 488], [100, 56]], [[934, 773], [120, 68]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-2, test_dir)
+run("Bistro", "dof", 8, 9, 0, 10, 0.0625, 0.03125, 2.2, [[990, 488], [100, 56]], [[934, 773], [120, 68]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-2, test_dir)
 
 # cornell-box-pt-mdas-mb-1-eib-7-sf-1-et-0.0625-spp-8
-run("cornell-box", "pt", 8, 7, 1, 7, 1, 0.0625, 2.2, [[540, 775], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [70, 187, 95], 64, 512, True, "", 0, 1.0e-1, test_dir)
+run("cornell-box", "pt", 8, 6, 1, 7, 1, 0.0625, 2.2, [[540, 775], [100, 100]], [[280, 880], [60, 60]], [35, 51, 239], [70, 187, 95], 64, 512, True, "", 0, 1.0e-1, test_dir)
 
 # breakfast-pt-mdas-mb-1-eib-8-sf-0.5-et-0.015625-spp-8
-run("breakfast", "pt", 8, 7, 1, 8, 0.5, 0.015625, 2.2, [[585, 655], [100, 75]], [[245, 335], [80, 60]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-1, test_dir)
+run("breakfast", "pt", 8, 8, 1, 8, 0.5, 0.015625, 2.2, [[585, 655], [100, 75]], [[245, 335], [80, 60]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 1.0e-1, test_dir)
 
 # dragon-dl-mdas-mb-0-eib-10-sf-0.25-et-0.015625-spp-8
-run("dragon", "dl", 8, 13, 1, 8, 0.25, 0.015625, 2.2, [[140, 510], [100, 75]], [[585, 270], [40, 30]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 3.0e-2, test_dir)
-
+run("dragon", "dl", 8, 13, 0, 10, 0.25, 0.015625, 2.2, [[140, 510], [100, 75]], [[585, 270], [40, 30]], [35, 51, 239], [70, 187, 95], 48, 512, True, "", 0, 3.0e-2, test_dir)
 
 # pool-mb-mdas-mb-1-eib-8-sf-0.0625-et-0.25-spp-4
 run("pool", "mb", 8, 15, 1, 8, 0.0625, 0.25, 2.2, [[686, 334], [50, 50]], [[400, 450], [50, 50]], [35, 51, 239], [70, 187, 95], 512, 32, False, "denoising", 0, 1.0e-2, test_dir)
