@@ -6,17 +6,17 @@ import numpy as np
 home_drive = "C:/Users/rpr/Desktop/meistdan"
 base_dir = home_drive + "/optix/SDK/data/"
 
-out_dir = os.path.join(base_dir, "test-jcgt")
+out_dir = os.path.join(base_dir, "test-jcgt-rev")
 os.chdir(out_dir)
 
 testing_passes = 1
 
-scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast", "cornell-box"]
+scenes = ["pool", "chess", "Bistro", "picapica", "san-miguel", "gallery", "crytek-sponza", "hairball", "cornell-box", "picapica", "dragon", "breakfast", "cornell-box", "cobblestone", "hairball"]
 bin_labels = ["mb", "dof", "ao", "pt", "dl"]
-bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4]
+bin_indices = [0, 1, 1, 2, 2, 2, 2, 2, 3, 3, 4, 3, 4, 4, 4]
 
 # scene_indices = [1, 2, 10, 11]
-scene_indices = [10]
+scene_indices = [13]
 mc_spps = list(range(1, 33))
 spps = [4, 8]
 # spps = [4]
