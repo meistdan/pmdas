@@ -640,9 +640,6 @@ namespace mdas {
         const int samplesPerNode = 4;
         numberOfNodes = (1 << (bitsPerDim * Point::DIM)) << (extraImgBits << 1);
         numberOfSamples = numberOfNodes * samplesPerNode;
-        std::cout << "Initial samples " << numberOfSamples << std::endl;
-        std::cout << "Nodes " << numberOfNodes << std::endl;
-        std::cout << "Scale " << scaleX << " " << scaleY << std::endl;
 
         // Grid and block size
         int minGridSize, blockSize;
@@ -829,8 +826,8 @@ namespace mdas {
         for (int i = 0; i < GetNumberOfSamples(); ++i) {
             int x = sampleCoordinates[i][0] / scaleX * width;
             int y = sampleCoordinates[i][1] / scaleY * height;
-            if (x >= width) std::cout << "X out of bounds " << x << std::endl;
-            if (y >= height) std::cout << "Y out of bounds " << y << std::endl;
+            if (x > width) std::cout << "X out of bounds " << x << std::endl;
+            if (y > height) std::cout << "Y out of bounds " << y << std::endl;
             x = std::min(x, width - 1);
             y = std::min(y, height - 1);
             pixels[y * width + x] += make_float4(samplingDensity);

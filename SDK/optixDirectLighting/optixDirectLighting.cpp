@@ -752,8 +752,6 @@ int main(int argc, char* argv[])
                             + kdgrid->GetNumberOfNodes() <= max_samples)
                         {
                             samplingPassMdas();
-                            std::cout << "New nodes " << kdgrid->GetNewNodes() << ", New samples " << kdgrid->GetNewSamples() <<
-                                ", Samples " << kdgrid->GetNumberOfSamples() << ", Nodes " << kdgrid->GetNumberOfNodes() << std::endl;
                             launchSubframe(output_buffer, output_buffer_bytes, scene);
                         }
                         integrateMdas(output_buffer, output_buffer_bytes);
