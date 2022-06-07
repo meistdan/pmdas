@@ -6,7 +6,7 @@ We extended Optix samples to support the proposed parallel multidimensional samp
 We compiled the project with Visual Studio 2019 (x64), but it should work also with other compilers using CMake.
 
 ## Usage
-There are three sample scenes in SDK/data: pool, cornell-box, and chess. We use env file format for the configuration. Besides scene configuration, we can also configre sampling:
+There are three sample scenes in SDK/data: pool, cornell-box, and chess. We use env file format for the configuration. Besides scene configuration, we can also configure sampling:
 ```
 Sampler {
     mdas true # use mdas or qmc
