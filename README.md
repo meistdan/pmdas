@@ -23,7 +23,7 @@ Mdas { # mdas parameters (see aper for details
 
 We simply use the env file as argument to run the sample:
 ```
-./optixMotionBlur ../../../data/pool/pool.env
+./optixMotionBlur.exe ../../../data/pool/pool.env
 ./optixDepthOfField.exe ../../../data/chess/chess.env
 ./optixPathTracer.exe ../../../data/cornell-box/cornell-box.env
 ```
