@@ -13,7 +13,7 @@ Sampler {
     samples 8 # number of saples
 }
 
-Mdas { # mdas parameters (see aper for details
+Mdas { # mdas parameters (see paper for details)
     scaleFactor 1 
     alpha 0.25
     bitsPerDim 1
