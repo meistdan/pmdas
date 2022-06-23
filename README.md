@@ -1,5 +1,5 @@
 # Lightweight Multidimensional Adaptive Sampling for GPU Ray Tracing
-Sources codes of the <a href="https://jcgt.org/published/XXXX/XX/XX">Lightweight Multidimensional Adaptive Sampling for GPU Ray Tracing</a> project. 
+Sources codes of the <a href="https://jcgt.org/published/0011/02/05/">Lightweight Multidimensional Adaptive Sampling for GPU Ray Tracing</a> project. 
 We extended Optix samples to support the proposed parallel multidimensional sampling and reconstruction. In particular, we added five new samples: optixMotionBlur, optixDepthOfField, optixAmbientOcclusion, optixPathTracer, and optixDirectLighting.
 
 ## Compilation
@@ -34,14 +34,15 @@ There test scripts in SDK/data/Scripts that we used to generate the paper result
 The additional code is released into the public domain. 
 
 ## Citation
-If you use this code, please cite <a href="https://jcgt.org/published/XXXX/XX/XX">the paper</a>:
+If you use this code, please cite <a href="https://jcgt.org/published/0011/02/05/">the paper</a>:
 ```
 @Article{Meister2022,
   author = {Daniel Meister and Toshiya Hachisuka},
   title = {{Lightweight Multidimensional Adaptive Sampling for GPU Ray Tracing}},
-  journal = {Journal of Computer Graphics Techniques},
-  volume = {XX},
-  pages = {XXX-XXX},
+  journal = {Journal of Computer Graphics Techniques (JCGT)},
+  volume = {11},
+  number = {2},
+  pages = {91--112},
   year = {2022},
 }
 ```
