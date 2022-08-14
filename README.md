@@ -41,8 +41,8 @@ If you use this code, please cite <a href="https://jcgt.org/published/0011/02/05
   title = {{Lightweight Multidimensional Adaptive Sampling for GPU Ray Tracing}},
   journal = {Journal of Computer Graphics Techniques (JCGT)},
   volume = {11},
-  number = {2},
-  pages = {91--112},
+  number = {3},
+  pages = {46--64},
   year = {2022},
 }
 ```
